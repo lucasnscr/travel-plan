@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Travel Orchestrator - Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f7fa; }
+        h1 { color: #1a5490; }
+        .metrics-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .metric-box {
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            min-width: 200px;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            flex: 1;
+        }
+        .metric-value { font-size: 32px; font-weight: bold; color: #1a5490; }
+        .metric-label { font-size: 14px; color: #666; margin-bottom: 6px; }
+        .charts-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .chart-box {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            flex: 1;
+            min-width: 400px;
+        }
+        canvas { width: 100% !important; max-height: 350px; }
+        #status { font-size: 12px; color: #999; margin-top: 16px; }
+        #status.error { color: #c0392b; }
+    </style>
+</head>
+<body>
+    <h1>Travel Orchestrator - Dashboard</h1>
+
+    <div class="metrics-row">
+        <div class="metric-box">
+            <div class="metric-label">Planos Completados</div>
+            <div class="metric-value" id="plans-completed">-</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">Aprovados</div>
+            <div class="metric-value" id="plans-approved">-</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">Rejeitados</div>
+            <div class="metric-value" id="plans-rejected">-</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">Taxa de Aprovacao</div>
+            <div class="metric-value" id="approval-rate">-%</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">Tempo Medio</div>
+            <div class="metric-value" id="avg-time">-s</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">Planejamentos Ativos</div>
+            <div class="metric-value" id="active-plannings">-</div>
+        </div>
+    </div>
+
+    <div class="charts-row">
+        <div class="chart-box">
+            <h3>Performance por Node</h3>
+            <canvas id="node-performance"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3>Status dos Planos</h3>
+            <canvas id="plan-status"></canvas>
+        </div>
+    </div>
+
+    <div id="status">Aguardando dados...</div>
+
+    <script>
+        // -----------------------------------------------------------------
+        // Prometheus text format parser
+        // -----------------------------------------------------------------
+        function parsePrometheusMetrics(text) {
+            var metrics = {};
+            var lines = text.split('\n');
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i].trim();
+                if (!line || line.charAt(0) === '#') continue;
+
+                // Split on the last space to get value
+                var lastSpace = line.lastIndexOf(' ');
+                if (lastSpace === -1) continue;
+
+                var key = line.substring(0, lastSpace);
+                var val = parseFloat(line.substring(lastSpace + 1));
+                if (isNaN(val)) continue;
+
+                metrics[key] = val;
+            }
+            return metrics;
+        }
+
+        // Extract label value from a metric key like:
+        //   travel_node_execution_seconds_sum{node_name="analyze"}
+        function extractLabel(key, labelName) {
+            var pattern = labelName + '="';
+            var start = key.indexOf(pattern);
+            if (start === -1) return null;
+            start += pattern.length;
+            var end = key.indexOf('"', start);
+            if (end === -1) return null;
+            return key.substring(start, end);
+        }
+
+        // -----------------------------------------------------------------
+        // Charts (created once, updated on each poll)
+        // -----------------------------------------------------------------
+        var nodeChart = null;
+        var statusChart = null;
+
+        function initCharts() {
+            var nodeCtx = document.getElementById('node-performance').getContext('2d');
+            nodeChart = new Chart(nodeCtx, {
+                type: 'bar',
+                data: { labels: [], datasets: [{
+                    label: 'Tempo medio (s)',
+                    data: [],
+                    backgroundColor: 'rgba(26, 84, 144, 0.7)',
+                    borderColor: '#1a5490',
+                    borderWidth: 1
+                }]},
+                options: {
+                    responsive: true,
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Segundos' } } },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            var statusCtx = document.getElementById('plan-status').getContext('2d');
+            statusChart = new Chart(statusCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Aprovados', 'Rejeitados', 'Erro'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#27ae60', '#c0392b', '#f39c12']
+                    }]
+                },
+                options: { responsive: true }
+            });
+        }
+
+        // -----------------------------------------------------------------
+        // Dashboard update logic
+        // -----------------------------------------------------------------
+        async function updateDashboard() {
+            var statusEl = document.getElementById('status');
+            var metrics;
+
+            try {
+                var response = await fetch('/metrics');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                var text = await response.text();
+                metrics = parsePrometheusMetrics(text);
+            } catch (err) {
+                statusEl.textContent = 'Erro ao buscar metricas: ' + err.message;
+                statusEl.className = 'error';
+                return;
+            }
+
+            // --- Scalar metric boxes ---
+
+            // Plans completed = sum of all status labels
+            var completed = 0;
+            var successCount = 0;
+            var errorCount = 0;
+            for (var k in metrics) {
+                if (k.indexOf('travel_plans_completed_total{') === 0) {
+                    completed += metrics[k];
+                    var st = extractLabel(k, 'status');
+                    if (st === 'success' || st === 'approved') successCount += metrics[k];
+                    if (st === 'error') errorCount += metrics[k];
+                }
+            }
+            // Fallback: unlabeled total
+            if (completed === 0 && metrics['travel_plans_completed_total'] !== undefined) {
+                completed = metrics['travel_plans_completed_total'];
+            }
+
+            var approved = metrics['travel_plans_approved_total'] || 0;
+            var rejected = metrics['travel_plans_rejected_total'] || 0;
+
+            document.getElementById('plans-completed').textContent = completed.toFixed(0);
+            document.getElementById('plans-approved').textContent = approved.toFixed(0);
+            document.getElementById('plans-rejected').textContent = rejected.toFixed(0);
+
+            var rateBase = approved + rejected;
+            var rate = rateBase > 0 ? (approved / rateBase * 100).toFixed(1) : '-';
+            document.getElementById('approval-rate').textContent = rate + '%';
+
+            // Average planning duration from histogram sum / count
+            var durSum = metrics['travel_planning_duration_seconds_sum'] || 0;
+            var durCount = metrics['travel_planning_duration_seconds_count'] || 0;
+            var avgTime = durCount > 0 ? (durSum / durCount).toFixed(1) : '-';
+            document.getElementById('avg-time').textContent = avgTime + 's';
+
+            var active = metrics['travel_active_plannings'] || 0;
+            document.getElementById('active-plannings').textContent = active.toFixed(0);
+
+            // --- Node performance chart ---
+            var nodeNames = [];
+            var nodeAvgs = [];
+            var nodeSums = {};
+            var nodeCounts = {};
+
+            for (var k in metrics) {
+                if (k.indexOf('travel_node_execution_seconds_sum{') === 0) {
+                    var name = extractLabel(k, 'node_name');
+                    if (name) nodeSums[name] = metrics[k];
+                }
+                if (k.indexOf('travel_node_execution_seconds_count{') === 0) {
+                    var name = extractLabel(k, 'node_name');
+                    if (name) nodeCounts[name] = metrics[k];
+                }
+            }
+            for (var n in nodeSums) {
+                if (nodeCounts[n] && nodeCounts[n] > 0) {
+                    nodeNames.push(n);
+                    nodeAvgs.push(parseFloat((nodeSums[n] / nodeCounts[n]).toFixed(3)));
+                }
+            }
+
+            nodeChart.data.labels = nodeNames;
+            nodeChart.data.datasets[0].data = nodeAvgs;
+            nodeChart.update();
+
+            // --- Plan status doughnut ---
+            statusChart.data.datasets[0].data = [approved, rejected, errorCount];
+            statusChart.update();
+
+            statusEl.textContent = 'Ultima atualizacao: ' + new Date().toLocaleTimeString();
+            statusEl.className = '';
+        }
+
+        // -----------------------------------------------------------------
+        // Bootstrap
+        // -----------------------------------------------------------------
+        initCharts();
+        updateDashboard();
+        setInterval(updateDashboard, 5000);
+    </script>
+</body>
+</html>
