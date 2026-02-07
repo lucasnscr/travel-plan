@@ -3,81 +3,33 @@
 Broadcasts node transitions, MCP tool calls, and state snapshots
 to connected frontend clients.  Includes a demo simulation mode
 for presentations.
+
+Now delegates all connection management to :mod:`ws_manager`.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import random
 import time
 import uuid
 from typing import Any
 
-from fastapi import WebSocket, WebSocketDisconnect
-
+from travel_orchestrator.api.ws_manager import manager
 from travel_orchestrator.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# ---------------------------------------------------------------------------
-# Connected clients
-# ---------------------------------------------------------------------------
-
-_clients: set[WebSocket] = set()
+CHANNEL = "orchestrator"
 
 # ---------------------------------------------------------------------------
-# WebSocket handler
-# ---------------------------------------------------------------------------
-
-
-async def orchestrator_ws(websocket: WebSocket) -> None:
-    """Handle a WebSocket connection for orchestrator events."""
-    await websocket.accept()
-    _clients.add(websocket)
-    logger.info("ws_client_connected", total_clients=len(_clients))
-
-    try:
-        while True:
-            data = await websocket.receive_text()
-            try:
-                msg = json.loads(data)
-            except json.JSONDecodeError:
-                continue
-
-            action = msg.get("action")
-            if action == "start_demo":
-                asyncio.create_task(_run_demo_simulation())
-    except WebSocketDisconnect:
-        _clients.discard(websocket)
-        logger.info("ws_client_disconnected", total_clients=len(_clients))
-
-
-# ---------------------------------------------------------------------------
-# Broadcast helper
+# Broadcast helpers (used by graph nodes and demo simulation)
 # ---------------------------------------------------------------------------
 
 
 async def broadcast(event: dict[str, Any]) -> None:
-    """Broadcast an event to all connected WebSocket clients."""
-    if not _clients:
-        return
-
-    payload = json.dumps(event, default=str)
-    disconnected: set[WebSocket] = set()
-
-    for ws in _clients:
-        try:
-            await ws.send_text(payload)
-        except Exception:  # noqa: BLE001
-            disconnected.add(ws)
-
-    _clients -= disconnected
-
-
-# ---------------------------------------------------------------------------
-# Convenience emitters for use from graph nodes
-# ---------------------------------------------------------------------------
+    """Broadcast an event to all connected orchestrator clients."""
+    await manager.broadcast(CHANNEL, event)
 
 
 async def emit_node_status(node: str, status: str) -> None:

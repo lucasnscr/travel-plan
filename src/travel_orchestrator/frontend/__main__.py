@@ -3,8 +3,8 @@
 import uvicorn
 
 uvicorn.run(
-    "travel_orchestrator.frontend.server:app",
+    "travel_orchestrator.api.main:app",
     host="0.0.0.0",
-    port=7860,
+    port=8000,
     log_level="info",
 )

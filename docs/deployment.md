@@ -6,7 +6,9 @@
 
 | Porta | Servico | Descricao |
 |-------|---------|-----------|
-| 7860 | FastAPI | Interface web + API + metricas + health |
+| 8000 | FastAPI API | REST API + WebSocket + metricas + health |
+| 3000 | Frontend | React SPA (servido com `serve`) |
+| 5173 | Vite Dev | Dev server do frontend (desenvolvimento) |
 | 6379 | Redis | Cache e armazenamento de estado |
 | 9090 | Prometheus | Interface de monitoramento |
 
@@ -17,7 +19,7 @@
 docker build -t travel-orchestrator .
 
 # Executar standalone
-docker run -p 7860:7860 \
+docker run -p 8000:8000 \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   travel-orchestrator
 ```
@@ -35,22 +37,24 @@ docker compose up --build
 docker compose ps
 
 # Ver logs
-docker compose logs -f app
+docker compose logs -f api
 ```
 
 #### Servicos
 
 | Servico | Imagem | Funcao |
 |---------|--------|--------|
-| `app` | Build local | FastAPI SPA + API + metrics |
+| `api` | Build local (Python) | FastAPI REST API + WebSocket + metrics |
+| `frontend` | Build local (Node) | React SPA servido com `serve` |
 | `redis` | redis:7-alpine | Cache e state storage |
 | `prometheus` | prom/prometheus:latest | Coleta e armazena metricas |
 
 #### Rede Docker
 
 Os servicos se comunicam pela rede interna do Docker Compose:
-- `app` acessa Redis via `redis://redis:6379/0`
-- `prometheus` scrapa metricas de `app:7860/metrics`
+- `api` acessa Redis via `redis://redis:6379/0`
+- `frontend` depende de `api` e proxia via Vite ou `serve`
+- `prometheus` scrapa metricas de `api:8000/metrics`
 
 ### Dockerfile
 
@@ -67,7 +71,7 @@ O Dockerfile usa Python 3.11-slim e Poetry:
 #### Entrypoint
 
 O script `scripts/entrypoint.sh` inicia um unico processo:
-1. **Uvicorn** (foreground via `exec`): FastAPI server na porta 7860 (SPA + API + metrics)
+1. **Uvicorn** (foreground via `exec`): FastAPI API server na porta 8000
 
 ### Healthcheck
 
@@ -97,7 +101,7 @@ scrape_configs:
   - job_name: 'travel-orchestrator'
     metrics_path: /metrics
     static_configs:
-      - targets: ['app:7860']
+      - targets: ['api:8000']
 ```
 
 ### Metricas Disponiveis
@@ -116,8 +120,8 @@ scrape_configs:
 
 | Endpoint | URL | Descricao |
 |----------|-----|-----------|
-| Metricas raw | http://localhost:7860/metrics | Formato Prometheus text |
-| Dashboard | http://localhost:7860/dashboard | Dashboard HTML com Chart.js |
+| Metricas raw | http://localhost:8000/metrics | Formato Prometheus text |
+| Dashboard | http://localhost:8000/dashboard | Dashboard HTML com Chart.js |
 | Prometheus UI | http://localhost:9090 | Interface nativa do Prometheus |
 
 ### Queries PromQL Uteis
@@ -163,11 +167,11 @@ export PYTHONPATH=src
 ### Executando
 
 ```bash
-# Servidor unico (porta 7860) — SPA + API + metrics
-python -m travel_orchestrator.frontend
+# API server (porta 8000)
+uvicorn travel_orchestrator.api.main:app --port 8000
 
-# Ou diretamente com uvicorn
-uvicorn travel_orchestrator.frontend.server:app --port 7860
+# Ou via modulo legado
+python -m travel_orchestrator.frontend
 ```
 
 ### Testes

@@ -1,4 +1,4 @@
-import { get, postForm } from "./api-client";
+import { get, post, patch, postForm } from "./api-client";
 import type {
   PlanRequest,
   PlanResponse,
@@ -20,7 +20,7 @@ export async function planTrip(req: PlanRequest): Promise<PlanResponse> {
   if (req.image_file) fd.append("image_file", req.image_file);
   if (req.pdf_file) fd.append("pdf_file", req.pdf_file);
 
-  return postForm<PlanResponse>("/api/plan", fd);
+  return postForm<PlanResponse>("/api/plan/form", fd);
 }
 
 export async function approvePlan(
@@ -43,4 +43,46 @@ export function getMapUrl(filename: string): string {
 
 export function getPdfUrl(filename: string): string {
   return `/api/pdf/${filename}`;
+}
+
+// ---------------------------------------------------------------------------
+// Trip CRUD (new endpoints)
+// ---------------------------------------------------------------------------
+
+export interface TripPlanResponse {
+  plan_id: string;
+  destination: string;
+  start_date: string;
+  end_date: string;
+  days: unknown[];
+  hotels: unknown[];
+  activities: unknown[];
+  total_cost: number;
+  currency: string;
+  weather_summary: unknown | null;
+  approval_status: string;
+  map_url: string;
+  pdf_url: string;
+}
+
+export async function getTrip(tripId: string): Promise<TripPlanResponse> {
+  return get<TripPlanResponse>(`/api/trip/${tripId}`);
+}
+
+export async function updateItinerary(
+  tripId: string,
+  days: unknown[],
+): Promise<TripPlanResponse> {
+  return patch<TripPlanResponse>(`/api/trip/${tripId}/itinerary`, { days });
+}
+
+export async function approveTrip(
+  tripId: string,
+  decision: "approved" | "rejected",
+  feedback = "",
+): Promise<ApprovalResponse> {
+  return post<ApprovalResponse>(`/api/trip/${tripId}/approve`, {
+    decision,
+    feedback,
+  });
 }

@@ -400,7 +400,7 @@ class TestHandleApproval:
 
 
 # ===================================================================
-# TestServer
+# TestServer (backward compat)
 # ===================================================================
 
 
@@ -412,10 +412,17 @@ class TestServer:
 
         assert isinstance(app, FastAPI)
 
+    def test_api_app_is_fastapi(self) -> None:
+        from fastapi import FastAPI
+
+        from travel_orchestrator.api.main import app
+
+        assert isinstance(app, FastAPI)
+
     def test_health_endpoint(self) -> None:
         from starlette.testclient import TestClient
 
-        from travel_orchestrator.frontend.server import app
+        from travel_orchestrator.api.main import app
 
         client = TestClient(app)
         resp = client.get("/health")

@@ -1,10 +1,10 @@
 version: '3.8'
 
 services:
-  app:
+  api:
     build: .
     ports:
-      - "7860:7860"   # FastAPI (SPA + API + metrics)
+      - "8000:8000"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -17,6 +17,17 @@ services:
         condition: service_started
     volumes:
       - app_data:/app/data
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_BASE_URL=http://api:8000
+    depends_on:
+      - api
 
   redis:
     image: redis:7-alpine
@@ -40,7 +51,7 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
     depends_on:
-      - app
+      - api
 
 volumes:
   app_data:

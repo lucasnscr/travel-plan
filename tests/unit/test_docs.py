@@ -141,7 +141,8 @@ class TestDocsDeployment:
 
     def test_has_port_table(self) -> None:
         content = (DOCS / "deployment.md").read_text()
-        assert "7860" in content
+        assert "8000" in content
+        assert "3000" in content
         assert "9090" in content
 
     def test_has_prometheus_section(self) -> None:
