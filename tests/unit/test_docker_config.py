@@ -22,13 +22,9 @@ class TestDockerfile:
         content = (ROOT / "Dockerfile").read_text()
         assert "python:3.11-slim" in content
 
-    def test_exposes_gradio_port(self) -> None:
+    def test_exposes_app_port(self) -> None:
         content = (ROOT / "Dockerfile").read_text()
         assert "7860" in content
-
-    def test_exposes_metrics_port(self) -> None:
-        content = (ROOT / "Dockerfile").read_text()
-        assert "8000" in content
 
     def test_has_healthcheck(self) -> None:
         content = (ROOT / "Dockerfile").read_text()
@@ -77,15 +73,10 @@ class TestDockerCompose:
         data = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
         assert "prometheus" in data["services"]
 
-    def test_app_exposes_gradio_port(self) -> None:
+    def test_app_exposes_port(self) -> None:
         data = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
         ports = data["services"]["app"]["ports"]
         assert any("7860" in str(p) for p in ports)
-
-    def test_app_exposes_metrics_port(self) -> None:
-        data = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
-        ports = data["services"]["app"]["ports"]
-        assert any("8000" in str(p) for p in ports)
 
     def test_app_depends_on_redis(self) -> None:
         data = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
@@ -135,11 +126,11 @@ class TestPrometheusConfig:
         data = yaml.safe_load((ROOT / "prometheus.yml").read_text())
         assert "scrape_interval" in data["global"]
 
-    def test_scrapes_app_on_8000(self) -> None:
+    def test_scrapes_app_on_7860(self) -> None:
         data = yaml.safe_load((ROOT / "prometheus.yml").read_text())
         jobs = data["scrape_configs"]
         targets = jobs[0]["static_configs"][0]["targets"]
-        assert "app:8000" in targets
+        assert "app:7860" in targets
 
     def test_job_name_is_travel_orchestrator(self) -> None:
         data = yaml.safe_load((ROOT / "prometheus.yml").read_text())
@@ -189,14 +180,14 @@ class TestEntrypoint:
     def test_file_exists(self) -> None:
         assert (ROOT / "scripts" / "entrypoint.sh").is_file()
 
-    def test_starts_metrics_server(self) -> None:
+    def test_starts_uvicorn(self) -> None:
         content = (ROOT / "scripts" / "entrypoint.sh").read_text()
         assert "uvicorn" in content
-        assert "8000" in content
+        assert "7860" in content
 
-    def test_starts_gradio(self) -> None:
+    def test_starts_server(self) -> None:
         content = (ROOT / "scripts" / "entrypoint.sh").read_text()
-        assert "travel_orchestrator.frontend.app" in content
+        assert "travel_orchestrator.frontend.server" in content
 
     def test_uses_exec_for_foreground_process(self) -> None:
         content = (ROOT / "scripts" / "entrypoint.sh").read_text()

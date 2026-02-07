@@ -3,6 +3,9 @@
 Generates realistic forecasts based on destination coordinates, month,
 and a seeded RNG so that identical inputs always produce identical
 outputs — useful for testing and offline development.
+
+All responses include ``"data_source": "mock"`` so consumers can
+distinguish mock data from live API results.
 """
 
 from __future__ import annotations
@@ -10,6 +13,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import random
+from typing import Any
 
 from travel_orchestrator.state.models import WeatherForecast
 
@@ -81,6 +85,11 @@ def _base_temps(climate: str, summer: bool) -> tuple[float, float]:
     return (2.0, 12.0) if summer else (-15.0, -2.0)
 
 
+def _coords_for(destination: str) -> tuple[float, float]:
+    """Return ``(lat, lng)`` for a destination name, with fallback."""
+    return _CITY_COORDS.get(destination.lower().strip(), (45.0, 0.0))
+
+
 def generate_forecast(
     destination: str,
     start_date: str,
@@ -99,7 +108,7 @@ def generate_forecast(
     start = datetime.date.fromisoformat(start_date)
     end = datetime.date.fromisoformat(end_date)
 
-    lat, _lng = _CITY_COORDS.get(destination.lower().strip(), (45.0, 0.0))
+    lat, _lng = _coords_for(destination)
     climate = _classify_climate(lat)
 
     conditions: list[str]
@@ -168,7 +177,7 @@ def generate_alerts(destination: str) -> list[dict[str, str]]:
         {
             "type": "heat_wave",
             "severity": "warning",
-            "message": f"Onda de calor prevista para {destination} nos próximos dias",
+            "message": f"Onda de calor prevista para {destination} nos proximos dias",
         },
         {
             "type": "storm",
@@ -178,7 +187,115 @@ def generate_alerts(destination: str) -> list[dict[str, str]]:
         {
             "type": "flood",
             "severity": "advisory",
-            "message": f"Risco de enchentes em áreas baixas de {destination}",
+            "message": f"Risco de enchentes em areas baixas de {destination}",
         },
     ]
     return [rng.choice(alert_pool)]
+
+
+# ---------------------------------------------------------------------------
+# Mock implementations for new MCP tools
+# ---------------------------------------------------------------------------
+
+
+def generate_current_weather(lat: float, lon: float) -> dict[str, Any]:
+    """Generate deterministic mock current weather for coordinates."""
+    rng = random.Random(_seed_for(f"{lat:.2f},{lon:.2f}", "current"))
+    climate = _classify_climate(lat)
+    summer = _is_summer(datetime.date.today().month, lat)
+    base_min, base_max = _base_temps(climate, summer)
+
+    temp = round((base_min + base_max) / 2 + rng.uniform(-3, 3), 1)
+    conditions: list[str]
+    if climate == "tropical":
+        conditions = _TROPICAL_CONDITIONS
+    elif climate == "polar":
+        conditions = _POLAR_CONDITIONS
+    else:
+        conditions = _TEMPERATE_CONDITIONS
+
+    condition = rng.choice(conditions)
+
+    return {
+        "temperature": temp,
+        "apparent_temperature": round(temp + rng.uniform(-2, 2), 1),
+        "humidity": rng.randint(30, 90),
+        "precipitation_mm": round(rng.uniform(0, 5), 1) if "rain" in condition else 0.0,
+        "wind_speed_kmh": round(rng.uniform(5, 30), 1),
+        "wind_direction": rng.randint(0, 360),
+        "weather_code": 0,
+        "condition": condition,
+        "description": condition.replace("_", " ").title(),
+        "description_pt": condition.replace("_", " ").title(),
+        "icon": "☀️" if "sunny" in condition else "☁️",
+        "data_source": "mock",
+    }
+
+
+def generate_hourly_forecast(
+    lat: float, lon: float, date: str,
+) -> list[dict[str, Any]]:
+    """Generate deterministic mock hourly forecast for a date."""
+    rng = random.Random(_seed_for(f"{lat:.2f},{lon:.2f}", date))
+    climate = _classify_climate(lat)
+    summer = _is_summer(
+        datetime.date.fromisoformat(date).month, lat,
+    )
+    base_min, base_max = _base_temps(climate, summer)
+
+    conditions: list[str]
+    if climate == "tropical":
+        conditions = _TROPICAL_CONDITIONS
+    elif climate == "polar":
+        conditions = _POLAR_CONDITIONS
+    else:
+        conditions = _TEMPERATE_CONDITIONS
+
+    hours: list[dict[str, Any]] = []
+    for h in range(24):
+        # Temperature follows a sine curve peaking at 14h
+        import math
+        t_factor = math.sin(math.pi * (h - 6) / 18) if 6 <= h <= 20 else -0.3
+        temp = round(base_min + (base_max - base_min) * max(0, t_factor) + rng.uniform(-1, 1), 1)
+        condition = rng.choice(conditions)
+
+        hours.append({
+            "time": f"{date}T{h:02d}:00",
+            "hour": f"{h:02d}:00",
+            "temperature": temp,
+            "precipitation_probability": round(rng.uniform(60, 90), 0) if "rain" in condition else round(rng.uniform(0, 20), 0),
+            "humidity": rng.randint(30, 90),
+            "wind_speed_kmh": round(rng.uniform(5, 25), 1),
+            "weather_code": 0,
+            "condition": condition,
+            "icon": "☀️" if "sunny" in condition else "☁️",
+            "data_source": "mock",
+        })
+
+    return hours
+
+
+def generate_air_quality(lat: float, lon: float) -> dict[str, Any]:
+    """Generate deterministic mock air quality data for coordinates."""
+    rng = random.Random(_seed_for(f"{lat:.2f},{lon:.2f}", "aqi"))
+
+    # Denser areas tend to have worse air quality
+    base_aqi = 30 if abs(lat) > 40 else 50
+    us_aqi = rng.randint(base_aqi, base_aqi + 60)
+
+    if us_aqi <= 50:
+        category = "good"
+    elif us_aqi <= 100:
+        category = "moderate"
+    elif us_aqi <= 150:
+        category = "unhealthy_for_sensitive"
+    else:
+        category = "unhealthy"
+
+    return {
+        "pm2_5": round(rng.uniform(3.0, 35.0), 1),
+        "pm10": round(rng.uniform(8.0, 60.0), 1),
+        "us_aqi": us_aqi,
+        "category": category,
+        "data_source": "mock",
+    }

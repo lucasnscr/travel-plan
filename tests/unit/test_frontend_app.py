@@ -1,4 +1,4 @@
-"""Unit tests for the Gradio frontend application."""
+"""Unit tests for the frontend application."""
 
 from __future__ import annotations
 
@@ -400,20 +400,24 @@ class TestHandleApproval:
 
 
 # ===================================================================
-# TestBuildApp
+# TestServer
 # ===================================================================
 
 
-class TestBuildApp:
-    def test_returns_blocks(self) -> None:
-        from travel_orchestrator.frontend.app import build_app
+class TestServer:
+    def test_app_is_fastapi(self) -> None:
+        from fastapi import FastAPI
 
-        app = build_app()
-        assert app is not None
+        from travel_orchestrator.frontend.server import app
 
-    def test_can_build_without_error(self) -> None:
-        from travel_orchestrator.frontend.app import build_app
+        assert isinstance(app, FastAPI)
 
-        # Should not raise
-        app = build_app()
-        assert hasattr(app, "launch")
+    def test_health_endpoint(self) -> None:
+        from starlette.testclient import TestClient
+
+        from travel_orchestrator.frontend.server import app
+
+        client = TestClient(app)
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "healthy"

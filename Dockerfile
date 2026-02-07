@@ -26,10 +26,10 @@ COPY src/ ./src/
 COPY scripts/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# Expose ports: 7860 = Gradio, 8000 = metrics/health
-EXPOSE 7860 8000
+# Expose port: 7860 = FastAPI (SPA + API + metrics)
+EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:7860/health || exit 1
 
 ENTRYPOINT ["/app/entrypoint.sh"]

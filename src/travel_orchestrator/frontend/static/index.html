@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Travel Orchestrator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            200: '#c7d2fe',
+                            300: '#a5b4fc',
+                            400: '#818cf8',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            800: '#3730a3',
+                            900: '#312e81',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); }
+        .tab-active { border-bottom: 2px solid #4f46e5; color: #4f46e5; font-weight: 600; }
+        .tab-inactive { border-bottom: 2px solid transparent; color: #64748b; }
+        .tab-inactive:hover { color: #334155; }
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .spinner { border: 3px solid #e0e7ff; border-top-color: #4f46e5; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.7s linear infinite; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .upload-zone { border: 2px dashed #cbd5e1; transition: all 0.2s; }
+        .upload-zone:hover { border-color: #818cf8; background: #eef2ff; }
+        .timeline-line { position: absolute; left: 15px; top: 32px; bottom: 0; width: 2px; background: #c7d2fe; }
+        .timeline-dot { position: absolute; left: 8px; top: 6px; width: 16px; height: 16px; border-radius: 50%; background: #4f46e5; border: 3px solid #e0e7ff; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-brand-700 via-brand-600 to-indigo-500 shadow-lg">
+        <div class="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-white tracking-tight">Travel Orchestrator</h1>
+                <p class="text-brand-200 text-sm mt-0.5">AI-powered travel planning platform</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <a href="/dashboard" target="_blank"
+                   class="text-brand-200 hover:text-white text-sm flex items-center gap-1.5 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    Dashboard
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-8">
+
+        <!-- Form Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+
+            <!-- Trip Details Card -->
+            <div class="lg:col-span-2 glass rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    Trip Details
+                </h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Destination</label>
+                        <input id="destination" type="text" placeholder="e.g. Paris, France"
+                               class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition-all text-slate-800 placeholder:text-slate-400">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">Start Date</label>
+                            <input id="start_date" type="date"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition-all text-slate-800">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">End Date</label>
+                            <input id="end_date" type="date"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition-all text-slate-800">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">Budget</label>
+                            <input id="budget" type="number" value="5000" min="0" step="100"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition-all text-slate-800">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">Currency</label>
+                            <select id="currency"
+                                    class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition-all text-slate-800 bg-white">
+                                <option value="USD">USD</option>
+                                <option value="EUR">EUR</option>
+                                <option value="BRL">BRL</option>
+                                <option value="GBP">GBP</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Group Size</label>
+                        <input id="group_size" type="range" min="1" max="20" value="2"
+                               class="w-full accent-brand-500" oninput="document.getElementById('group_size_label').textContent = this.value">
+                        <div class="flex justify-between text-xs text-slate-400 mt-1">
+                            <span>1</span>
+                            <span class="text-brand-600 font-medium" id="group_size_label">2</span>
+                            <span>20</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Interests</label>
+                        <input id="interests" type="text" placeholder="museums, gastronomy, outdoors"
+                               class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition-all text-slate-800 placeholder:text-slate-400">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Uploads Card -->
+            <div class="glass rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                    Optional Uploads
+                </h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1.5">Voice Description</label>
+                        <label class="upload-zone rounded-xl p-4 flex flex-col items-center gap-1.5 cursor-pointer block text-center">
+                            <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+                            <span class="text-xs text-slate-500" id="audio_label">MP3, WAV, M4A (max 25MB)</span>
+                            <input id="audio_file" type="file" accept=".mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm" class="hidden" onchange="updateFileLabel(this, 'audio_label')">
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1.5">Inspiration Image</label>
+                        <label class="upload-zone rounded-xl p-4 flex flex-col items-center gap-1.5 cursor-pointer block text-center">
+                            <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            <span class="text-xs text-slate-500" id="image_label">JPG, PNG, WebP (max 20MB)</span>
+                            <input id="image_file" type="file" accept=".jpg,.jpeg,.png,.webp" class="hidden" onchange="updateFileLabel(this, 'image_label')">
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1.5">Competitor PDF</label>
+                        <label class="upload-zone rounded-xl p-4 flex flex-col items-center gap-1.5 cursor-pointer block text-center">
+                            <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span class="text-xs text-slate-500" id="pdf_label">PDF (max 50MB)</span>
+                            <input id="pdf_file" type="file" accept=".pdf" class="hidden" onchange="updateFileLabel(this, 'pdf_label')">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Plan Button -->
+        <div class="mb-8">
+            <button id="plan_btn" onclick="planTrip()"
+                    class="w-full bg-gradient-to-r from-brand-600 to-indigo-500 hover:from-brand-700 hover:to-indigo-600 text-white font-semibold py-3.5 px-8 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-base flex items-center justify-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                Plan My Trip
+            </button>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading" class="hidden mb-8 fade-in">
+            <div class="glass rounded-2xl shadow-sm border border-brand-200 p-6 text-center">
+                <div class="spinner mx-auto mb-3"></div>
+                <p class="text-brand-700 font-medium" id="loading_text">Initializing planning pipeline...</p>
+                <div class="mt-3 w-full bg-brand-100 rounded-full h-2">
+                    <div id="loading_bar" class="bg-brand-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="error_box" class="hidden mb-8 fade-in">
+            <div class="bg-red-50 border border-red-200 rounded-2xl p-5 text-red-700">
+                <p class="font-medium mb-1">Error</p>
+                <p id="error_text" class="text-sm"></p>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results" class="hidden fade-in">
+
+            <!-- Tabs -->
+            <div class="flex gap-6 border-b border-slate-200 mb-6">
+                <button onclick="switchTab('plan')" id="tab_plan" class="pb-3 text-sm tab-active transition-colors">Plan</button>
+                <button onclick="switchTab('map')" id="tab_map" class="pb-3 text-sm tab-inactive transition-colors">Map</button>
+                <button onclick="switchTab('pdf')" id="tab_pdf" class="pb-3 text-sm tab-inactive transition-colors">PDF</button>
+                <button onclick="switchTab('review')" id="tab_review" class="pb-3 text-sm tab-inactive transition-colors">Review</button>
+            </div>
+
+            <!-- Plan Tab -->
+            <div id="content_plan" class="fade-in">
+                <div id="itinerary_view"></div>
+            </div>
+
+            <!-- Map Tab -->
+            <div id="content_map" class="hidden fade-in">
+                <div class="glass rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <iframe id="map_frame" class="w-full" style="height: 600px; border: none;" src="about:blank"></iframe>
+                </div>
+            </div>
+
+            <!-- PDF Tab -->
+            <div id="content_pdf" class="hidden fade-in">
+                <div class="glass rounded-2xl shadow-sm border border-slate-200 p-8 text-center">
+                    <svg class="w-16 h-16 text-brand-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    <h3 class="text-lg font-semibold text-slate-800 mb-2">Itinerary PDF</h3>
+                    <p class="text-slate-500 text-sm mb-4">Your complete travel itinerary as a downloadable PDF document.</p>
+                    <a id="pdf_link" href="#" download
+                       class="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        Download PDF
+                    </a>
+                    <p id="pdf_unavailable" class="hidden text-slate-400 text-sm mt-2">PDF not available for this plan.</p>
+                </div>
+            </div>
+
+            <!-- Review Tab -->
+            <div id="content_review" class="hidden fade-in">
+                <div class="glass rounded-2xl shadow-sm border border-slate-200 p-6 max-w-xl mx-auto">
+                    <h3 class="text-lg font-semibold text-slate-800 mb-4">Plan Review</h3>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Feedback (optional)</label>
+                        <textarea id="feedback" rows="3" placeholder="e.g. Hotel too far from center..."
+                                  class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition-all text-slate-800 placeholder:text-slate-400 resize-none"></textarea>
+                    </div>
+                    <div class="flex gap-3">
+                        <button onclick="approvePlan('approved')"
+                                class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-2.5 px-6 rounded-xl transition-colors flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            Approve
+                        </button>
+                        <button onclick="approvePlan('rejected')"
+                                class="flex-1 bg-red-500 hover:bg-red-600 text-white font-medium py-2.5 px-6 rounded-xl transition-colors flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            Reject
+                        </button>
+                    </div>
+                    <div id="approval_result" class="hidden mt-4 p-3 rounded-xl text-sm font-medium"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // -----------------------------------------------------------------
+        // State
+        // -----------------------------------------------------------------
+        var currentPlan = null;
+
+        // -----------------------------------------------------------------
+        // File upload labels
+        // -----------------------------------------------------------------
+        function updateFileLabel(input, labelId) {
+            var label = document.getElementById(labelId);
+            if (input.files.length > 0) {
+                label.textContent = input.files[0].name;
+                label.classList.add('text-brand-600', 'font-medium');
+                label.classList.remove('text-slate-500');
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Tab switching
+        // -----------------------------------------------------------------
+        function switchTab(tab) {
+            var tabs = ['plan', 'map', 'pdf', 'review'];
+            tabs.forEach(function(t) {
+                document.getElementById('tab_' + t).className = 'pb-3 text-sm ' + (t === tab ? 'tab-active' : 'tab-inactive') + ' transition-colors';
+                document.getElementById('content_' + t).className = t === tab ? 'fade-in' : 'hidden fade-in';
+            });
+        }
+
+        // -----------------------------------------------------------------
+        // Loading state
+        // -----------------------------------------------------------------
+        function showLoading(show, text, pct) {
+            var el = document.getElementById('loading');
+            el.className = show ? 'mb-8 fade-in' : 'hidden mb-8 fade-in';
+            if (text) document.getElementById('loading_text').textContent = text;
+            if (pct !== undefined) document.getElementById('loading_bar').style.width = pct + '%';
+        }
+
+        // -----------------------------------------------------------------
+        // Plan trip
+        // -----------------------------------------------------------------
+        async function planTrip() {
+            var btn = document.getElementById('plan_btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Planning...';
+
+            document.getElementById('results').className = 'hidden fade-in';
+            document.getElementById('error_box').className = 'hidden mb-8 fade-in';
+            showLoading(true, 'Starting planning pipeline...', 10);
+
+            var form = new FormData();
+            form.append('destination', document.getElementById('destination').value);
+            form.append('start_date', document.getElementById('start_date').value);
+            form.append('end_date', document.getElementById('end_date').value);
+            form.append('budget', document.getElementById('budget').value);
+            form.append('currency', document.getElementById('currency').value);
+            form.append('group_size', document.getElementById('group_size').value);
+            form.append('interests', document.getElementById('interests').value);
+
+            var audioInput = document.getElementById('audio_file');
+            if (audioInput.files.length > 0) form.append('audio_file', audioInput.files[0]);
+            var imageInput = document.getElementById('image_file');
+            if (imageInput.files.length > 0) form.append('image_file', imageInput.files[0]);
+            var pdfInput = document.getElementById('pdf_file');
+            if (pdfInput.files.length > 0) form.append('pdf_file', pdfInput.files[0]);
+
+            showLoading(true, 'Running AI travel planner...', 40);
+
+            try {
+                var resp = await fetch('/api/plan', { method: 'POST', body: form });
+                showLoading(true, 'Processing results...', 80);
+
+                if (!resp.ok) {
+                    var errData = await resp.json().catch(function() { return {}; });
+                    throw new Error(errData.detail || 'Server error: ' + resp.status);
+                }
+
+                var data = await resp.json();
+                currentPlan = data;
+
+                showLoading(true, 'Rendering results...', 95);
+                renderResults(data);
+                showLoading(false);
+                document.getElementById('results').className = 'fade-in';
+                switchTab('plan');
+            } catch (err) {
+                showLoading(false);
+                document.getElementById('error_box').className = 'mb-8 fade-in';
+                document.getElementById('error_text').textContent = err.message;
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Plan My Trip';
+        }
+
+        // -----------------------------------------------------------------
+        // Render results
+        // -----------------------------------------------------------------
+        function renderResults(data) {
+            var plan = data.plan;
+
+            // Map
+            if (data.map_url) {
+                document.getElementById('map_frame').src = data.map_url;
+            }
+
+            // PDF
+            if (data.pdf_url) {
+                document.getElementById('pdf_link').href = data.pdf_url;
+                document.getElementById('pdf_link').className = 'inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-medium py-2.5 px-6 rounded-xl transition-colors';
+                document.getElementById('pdf_unavailable').className = 'hidden';
+            } else {
+                document.getElementById('pdf_link').className = 'hidden';
+                document.getElementById('pdf_unavailable').className = 'text-slate-400 text-sm mt-2';
+            }
+
+            // Reset approval
+            document.getElementById('approval_result').className = 'hidden mt-4 p-3 rounded-xl text-sm font-medium';
+            document.getElementById('feedback').value = '';
+
+            // Render itinerary
+            renderItinerary(plan);
+        }
+
+        // -----------------------------------------------------------------
+        // Render itinerary
+        // -----------------------------------------------------------------
+        function renderItinerary(plan) {
+            var container = document.getElementById('itinerary_view');
+            var html = '';
+
+            // Header card
+            var dest = plan.destination || 'Unknown';
+            var dates = plan.dates || {};
+            var budget = plan.budget || {};
+            var cost = plan.current_cost || 0;
+            var currency = budget.currency || 'USD';
+
+            html += '<div class="glass rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">';
+            html += '<div class="flex flex-wrap items-start justify-between gap-4">';
+            html += '<div>';
+            html += '<h2 class="text-2xl font-bold text-slate-800">' + escHtml(dest) + '</h2>';
+            html += '<p class="text-slate-500 text-sm mt-1">' + escHtml(dates.start_date || '') + ' &mdash; ' + escHtml(dates.end_date || '') + '</p>';
+            if (plan.plan_id) html += '<p class="text-xs text-slate-400 mt-1 font-mono">' + escHtml(plan.plan_id) + '</p>';
+            html += '</div>';
+            html += '<div class="flex gap-3 flex-wrap">';
+            html += costCard('Budget', budget.total, currency, 'brand');
+            html += costCard('Total Cost', cost, currency, cost > (budget.total || 0) ? 'red' : 'emerald');
+            html += '</div></div>';
+
+            // Risk flags
+            var flags = plan.risk_flags || [];
+            if (flags.length > 0) {
+                html += '<div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">';
+                html += '<p class="text-amber-700 text-sm font-medium mb-1">Risk Flags</p>';
+                flags.forEach(function(f) { html += '<p class="text-amber-600 text-xs">&bull; ' + escHtml(f) + '</p>'; });
+                html += '</div>';
+            }
+            html += '</div>';
+
+            // Hotel
+            var hotels = plan.hotel_options || [];
+            var selectedHotel = null;
+            if (plan.selected_hotel_id) {
+                selectedHotel = hotels.find(function(h) { return h.name === plan.selected_hotel_id || h.id === plan.selected_hotel_id; });
+            }
+            if (!selectedHotel && hotels.length > 0) selectedHotel = hotels[0];
+
+            if (selectedHotel) {
+                html += '<div class="glass rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">';
+                html += '<h3 class="text-lg font-semibold text-slate-800 mb-3 flex items-center gap-2">';
+                html += '<svg class="w-5 h-5 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>';
+                html += 'Hotel</h3>';
+                html += '<div class="flex flex-wrap gap-4 items-center">';
+                html += '<div>';
+                html += '<p class="font-medium text-slate-800">' + escHtml(selectedHotel.name || '') + '</p>';
+                if (selectedHotel.stars) html += '<p class="text-sm text-amber-500">' + '&#9733;'.repeat(selectedHotel.stars) + '</p>';
+                if (selectedHotel.address) html += '<p class="text-xs text-slate-500">' + escHtml(selectedHotel.address) + '</p>';
+                html += '</div>';
+                if (selectedHotel.total_cost != null) {
+                    html += '<div class="ml-auto text-right">';
+                    html += '<p class="text-lg font-bold text-brand-600">' + fmtCurrency(selectedHotel.total_cost, currency) + '</p>';
+                    if (selectedHotel.price_per_night != null) html += '<p class="text-xs text-slate-400">' + fmtCurrency(selectedHotel.price_per_night, currency) + ' / night</p>';
+                    html += '</div>';
+                }
+                html += '</div></div>';
+            }
+
+            // Itinerary days
+            var itinerary = plan.optimized_itinerary;
+            if (itinerary && itinerary.days && itinerary.days.length > 0) {
+                html += '<h3 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">';
+                html += '<svg class="w-5 h-5 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>';
+                html += 'Itinerary</h3>';
+
+                itinerary.days.forEach(function(day, idx) {
+                    var dayColors = ['brand', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose'];
+                    var color = dayColors[idx % dayColors.length];
+
+                    html += '<div class="glass rounded-2xl shadow-sm border border-slate-200 p-6 mb-4">';
+                    html += '<div class="flex items-center gap-3 mb-4">';
+                    html += '<span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-' + color + '-100 text-' + color + '-700 text-sm font-bold">' + (idx + 1) + '</span>';
+                    html += '<div>';
+                    html += '<h4 class="font-semibold text-slate-800">' + escHtml(day.theme || 'Day ' + (idx + 1)) + '</h4>';
+                    if (day.date) html += '<p class="text-xs text-slate-500">' + escHtml(day.date) + '</p>';
+                    html += '</div></div>';
+
+                    // Activities timeline
+                    var activities = day.activities || [];
+                    if (activities.length > 0) {
+                        html += '<div class="space-y-3 ml-2">';
+                        activities.forEach(function(act) {
+                            html += '<div class="relative pl-10">';
+                            html += '<div class="timeline-dot"></div>';
+                            html += '<div class="p-3 bg-slate-50 rounded-xl border border-slate-100">';
+                            html += '<div class="flex items-start justify-between gap-2">';
+                            html += '<div>';
+                            html += '<p class="font-medium text-slate-800 text-sm">' + escHtml(act.name || act.activity || '') + '</p>';
+                            var meta = [];
+                            if (act.start_time) meta.push(act.start_time + (act.end_time ? ' - ' + act.end_time : ''));
+                            if (act.duration_minutes) meta.push(act.duration_minutes + ' min');
+                            if (act.category) meta.push(act.category);
+                            if (meta.length) html += '<p class="text-xs text-slate-500 mt-0.5">' + escHtml(meta.join(' &middot; ')) + '</p>';
+                            html += '</div>';
+                            if (act.cost != null) {
+                                html += '<span class="text-sm font-medium text-brand-600 whitespace-nowrap">' + fmtCurrency(act.cost, currency) + '</span>';
+                            }
+                            html += '</div></div></div>';
+                        });
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                });
+            } else {
+                // Fallback: raw JSON
+                html += '<div class="glass rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">';
+                html += '<h3 class="text-sm font-semibold text-slate-600 mb-2">Raw Plan Data</h3>';
+                html += '<pre class="text-xs text-slate-700 overflow-auto max-h-96 bg-slate-50 p-4 rounded-xl">' + escHtml(JSON.stringify(plan, null, 2)) + '</pre>';
+                html += '</div>';
+            }
+
+            container.innerHTML = html;
+        }
+
+        // -----------------------------------------------------------------
+        // Approve / Reject
+        // -----------------------------------------------------------------
+        async function approvePlan(decision) {
+            var feedback = document.getElementById('feedback').value;
+            var form = new FormData();
+            form.append('decision', decision);
+            form.append('feedback', feedback);
+
+            try {
+                var resp = await fetch('/api/approve', { method: 'POST', body: form });
+                var data = await resp.json();
+
+                var el = document.getElementById('approval_result');
+                if (decision === 'approved') {
+                    el.className = 'mt-4 p-3 rounded-xl text-sm font-medium bg-emerald-50 text-emerald-700 border border-emerald-200';
+                } else {
+                    el.className = 'mt-4 p-3 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200';
+                }
+                el.textContent = data.message;
+            } catch (err) {
+                var el = document.getElementById('approval_result');
+                el.className = 'mt-4 p-3 rounded-xl text-sm font-medium bg-red-50 text-red-700 border border-red-200';
+                el.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Helpers
+        // -----------------------------------------------------------------
+        function escHtml(str) {
+            var div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function fmtCurrency(amount, currency) {
+            try {
+                return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency }).format(amount);
+            } catch(e) {
+                return currency + ' ' + parseFloat(amount).toFixed(2);
+            }
+        }
+
+        function costCard(label, amount, currency, color) {
+            return '<div class="bg-' + color + '-50 border border-' + color + '-200 rounded-xl px-4 py-2.5 text-center min-w-[120px]">' +
+                   '<p class="text-xs text-' + color + '-600 mb-0.5">' + escHtml(label) + '</p>' +
+                   '<p class="text-lg font-bold text-' + color + '-700">' + fmtCurrency(amount || 0, currency) + '</p></div>';
+        }
+    </script>
+</body>
+</html>

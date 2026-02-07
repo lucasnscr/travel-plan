@@ -233,9 +233,11 @@ class TestInterestMapping:
 class TestMCPHandlers:
     async def test_list_tools(self) -> None:
         tools = await list_tools()
-        assert len(tools) == 1
-        assert tools[0].name == "discover_activities"
-        schema = tools[0].inputSchema
+        assert len(tools) == 9
+        names = {t.name for t in tools}
+        assert "discover_activities" in names
+        discover = next(t for t in tools if t.name == "discover_activities")
+        schema = discover.inputSchema
         assert "destination" in schema["properties"]
         assert "interests" in schema["properties"]
         assert "date_range" in schema["properties"]
@@ -258,6 +260,7 @@ class TestMCPHandlers:
         assert len(data) > 0
         assert "name" in data[0]
         assert "score" in data[0]
+        assert "data_source" in data[0]
 
     async def test_call_tool_unknown_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown tool"):

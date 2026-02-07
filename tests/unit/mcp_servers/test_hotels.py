@@ -19,6 +19,7 @@ from travel_orchestrator.mcp_servers.hotels.models import (
 )
 from travel_orchestrator.mcp_servers.hotels.retry import RetryableError, with_retry
 from travel_orchestrator.mcp_servers.hotels.scoring import compute_scores
+from travel_orchestrator.mcp_servers.hotels.booking_provider import BookingProvider
 from travel_orchestrator.mcp_servers.hotels.server import (
     call_tool,
     list_tools,
@@ -231,7 +232,7 @@ class TestFiltering:
             _raw_hotel(name="5Star", stars=5, price=900.0),
         ]
         with patch(
-            "travel_orchestrator.mcp_servers.hotels.server.search_hotels",
+            "travel_orchestrator.mcp_servers.hotels.server._fetch_hotels",
             new_callable=AsyncMock,
             return_value=raw_hotels,
         ):
@@ -250,7 +251,7 @@ class TestFiltering:
     async def test_no_filter_returns_all(self) -> None:
         raw_hotels = [_raw_hotel(name=f"H{i}", stars=i + 1) for i in range(5)]
         with patch(
-            "travel_orchestrator.mcp_servers.hotels.server.search_hotels",
+            "travel_orchestrator.mcp_servers.hotels.server._fetch_hotels",
             new_callable=AsyncMock,
             return_value=raw_hotels,
         ):
@@ -313,10 +314,11 @@ class TestRetry:
 
 
 class TestMCPHandlers:
-    async def test_list_tools_returns_search_hotels(self) -> None:
+    async def test_list_tools_returns_five_tools(self) -> None:
         tools = await list_tools()
-        assert len(tools) == 1
-        assert tools[0].name == "search_hotels"
+        assert len(tools) == 5
+        names = {t.name for t in tools}
+        assert "search_hotels" in names
         schema = tools[0].inputSchema
         assert "destination" in schema["properties"]
         assert "check_in" in schema["properties"]
@@ -325,7 +327,7 @@ class TestMCPHandlers:
     async def test_call_tool_search_hotels(self) -> None:
         raw = [_raw_hotel(name="Test Hotel")]
         with patch(
-            "travel_orchestrator.mcp_servers.hotels.server.search_hotels",
+            "travel_orchestrator.mcp_servers.hotels.server._fetch_hotels",
             new_callable=AsyncMock,
             return_value=raw,
         ):
@@ -343,6 +345,7 @@ class TestMCPHandlers:
         data = json.loads(result[0].text)
         assert isinstance(data, list)
         assert data[0]["name"] == "Test Hotel"
+        assert "data_source" in data[0]
 
     async def test_call_tool_unknown_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown tool"):
@@ -351,7 +354,7 @@ class TestMCPHandlers:
     async def test_invalid_dates_raises(self) -> None:
         raw = [_raw_hotel()]
         with patch(
-            "travel_orchestrator.mcp_servers.hotels.server.search_hotels",
+            "travel_orchestrator.mcp_servers.hotels.server._fetch_hotels",
             new_callable=AsyncMock,
             return_value=raw,
         ):

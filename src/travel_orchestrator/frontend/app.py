@@ -1,10 +1,7 @@
-"""Gradio web frontend for the travel orchestrator.
+"""Business logic for the travel orchestrator frontend.
 
-Run with::
-
-    python -m travel_orchestrator.frontend.app
-    # or
-    python -m travel_orchestrator.frontend
+This module contains the core planning pipeline and approval workflow.
+The web UI is served by ``frontend.server`` (FastAPI + static SPA).
 """
 
 from __future__ import annotations
@@ -15,8 +12,6 @@ import os
 import tempfile
 import uuid
 from typing import Any
-
-import gradio as gr
 
 from travel_orchestrator.multimodal.audio_processor import populate_state_from_audio
 from travel_orchestrator.multimodal.image_analyzer import analyze_inspiration_image
@@ -134,7 +129,7 @@ async def plan_trip(
     audio_file: str | None,
     image_file: str | None,
     pdf_file: str | None,
-    progress: gr.Progress = gr.Progress(),
+    progress: Any = None,
 ) -> tuple[str, str, str | None]:
     """Main planning pipeline.
 
@@ -143,7 +138,8 @@ async def plan_trip(
     """
     global _last_result_state
 
-    progress(0.0, desc="Initializing...")
+    if callable(progress):
+        progress(0.0, desc="Initializing...")
 
     # -- 1. Process multimodal inputs -----------------------------------------
     audio_state: dict[str, Any] | None = None
@@ -151,7 +147,8 @@ async def plan_trip(
     competitor_data: dict[str, Any] | None = None
 
     if audio_file:
-        progress(0.1, desc="Processing audio input...")
+        if callable(progress):
+            progress(0.1, desc="Processing audio input...")
         try:
             audio_state = await populate_state_from_audio(audio_file)
             logger.info("audio_processed", path=audio_file)
@@ -159,7 +156,8 @@ async def plan_trip(
             logger.warning("audio_processing_failed", error=str(exc))
 
     if image_file:
-        progress(0.2, desc="Analyzing inspiration image...")
+        if callable(progress):
+            progress(0.2, desc="Analyzing inspiration image...")
         try:
             image_vibe = await analyze_inspiration_image(image_file)
             logger.info("image_analyzed", path=image_file)
@@ -167,7 +165,8 @@ async def plan_trip(
             logger.warning("image_analysis_failed", error=str(exc))
 
     if pdf_file:
-        progress(0.3, desc="Parsing competitor PDF...")
+        if callable(progress):
+            progress(0.3, desc="Parsing competitor PDF...")
         try:
             competitor_data = await parse_competitor_offer_pdf(pdf_file)
             logger.info("pdf_parsed", path=pdf_file)
@@ -175,7 +174,8 @@ async def plan_trip(
             logger.warning("pdf_parsing_failed", error=str(exc))
 
     # -- 2. Build initial state -----------------------------------------------
-    progress(0.4, desc="Building travel plan state...")
+    if callable(progress):
+        progress(0.4, desc="Building travel plan state...")
     interests = [i.strip() for i in interests_text.split(",") if i.strip()]
 
     state = _build_initial_state(
@@ -192,7 +192,8 @@ async def plan_trip(
     )
 
     # -- 3. Run graph ---------------------------------------------------------
-    progress(0.5, desc="Running travel planner graph...")
+    if callable(progress):
+        progress(0.5, desc="Running travel planner graph...")
     try:
         from travel_orchestrator.graph.planner_graph import compile_graph
 
@@ -213,7 +214,8 @@ async def plan_trip(
     _last_result_state = result_state
 
     # -- 4. Generate outputs --------------------------------------------------
-    progress(0.8, desc="Generating outputs...")
+    if callable(progress):
+        progress(0.8, desc="Generating outputs...")
 
     plan_json = json.dumps(result_state, indent=2, default=str)
 
@@ -237,7 +239,8 @@ async def plan_trip(
         map_html = f"<p>Map generation failed: {exc}</p>"
 
     # Generate PDF
-    progress(0.9, desc="Generating PDF...")
+    if callable(progress):
+        progress(0.9, desc="Generating PDF...")
     pdf_path: str | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -249,7 +252,8 @@ async def plan_trip(
     except Exception as exc:
         logger.warning("pdf_generation_failed", error=str(exc))
 
-    progress(1.0, desc="Done!")
+    if callable(progress):
+        progress(1.0, desc="Done!")
     return plan_json, map_html, pdf_path
 
 
@@ -288,177 +292,3 @@ async def handle_approval(decision: str, feedback: str) -> str:
     if decision == "rejected" and feedback:
         msg += f" Feedback: {feedback}"
     return msg
-
-
-# ---------------------------------------------------------------------------
-# Gradio UI
-# ---------------------------------------------------------------------------
-
-
-def build_app() -> gr.Blocks:
-    """Construct and return the Gradio Blocks application."""
-
-    with gr.Blocks(
-        title="Travel Orchestrator",
-    ) as app:
-        gr.Markdown("# Travel Orchestrator")
-        gr.Markdown("AI-powered travel planning system")
-
-        # -- Input section ------------------------------------------------
-        with gr.Row():
-            with gr.Column(scale=2):
-                gr.Markdown("### Trip Details")
-                destination = gr.Textbox(
-                    label="Destination",
-                    placeholder="e.g. Paris, France",
-                )
-                with gr.Row():
-                    start_date = gr.Textbox(
-                        label="Start Date (YYYY-MM-DD)",
-                        placeholder="2026-07-01",
-                    )
-                    end_date = gr.Textbox(
-                        label="End Date (YYYY-MM-DD)",
-                        placeholder="2026-07-08",
-                    )
-                with gr.Row():
-                    budget = gr.Number(label="Budget", value=5000.0)
-                    currency = gr.Dropdown(
-                        label="Currency",
-                        choices=["USD", "EUR", "BRL", "GBP"],
-                        value="USD",
-                    )
-                group_size = gr.Slider(
-                    label="Group Size",
-                    minimum=1,
-                    maximum=20,
-                    step=1,
-                    value=2,
-                )
-                interests = gr.Textbox(
-                    label="Interests (comma-separated)",
-                    placeholder="museums, gastronomy, outdoors",
-                )
-
-            with gr.Column(scale=1):
-                gr.Markdown("### Optional Uploads")
-                audio_input = gr.Audio(
-                    label="Voice Description",
-                    type="filepath",
-                )
-                image_input = gr.Image(
-                    label="Inspiration Image",
-                    type="filepath",
-                )
-                pdf_input = gr.File(
-                    label="Competitor PDF",
-                    file_types=[".pdf"],
-                )
-
-        plan_btn = gr.Button(
-            "Plan My Trip",
-            variant="primary",
-            size="lg",
-        )
-
-        # -- Output section -----------------------------------------------
-        with gr.Tabs():
-            with gr.TabItem("Plan"):
-                plan_output = gr.JSON(label="Travel Plan")
-            with gr.TabItem("Map"):
-                map_output = gr.HTML(label="Interactive Map")
-            with gr.TabItem("PDF"):
-                pdf_output = gr.File(label="Download Itinerary PDF")
-
-        # -- Approval section ---------------------------------------------
-        gr.Markdown("---")
-        gr.Markdown("### Plan Review")
-        with gr.Row():
-            feedback_text = gr.Textbox(
-                label="Feedback (for rejection)",
-                placeholder="e.g. Hotel too far from center",
-                scale=3,
-            )
-            approve_btn = gr.Button("Approve", variant="primary", scale=1)
-            reject_btn = gr.Button("Reject", variant="stop", scale=1)
-        approval_output = gr.Textbox(
-            label="Decision Result",
-            interactive=False,
-        )
-
-        # -- Wiring -------------------------------------------------------
-        async def on_plan_click(
-            dest: str,
-            s_date: str,
-            e_date: str,
-            bdgt: float,
-            curr: str,
-            grp: int,
-            ints: str,
-            audio: str | None,
-            image: str | None,
-            pdf: Any,
-            progress: gr.Progress = gr.Progress(),
-        ) -> tuple[Any, str, str | None]:
-            # Gradio File component returns a filepath string or UploadedFile
-            pdf_path = None
-            if pdf is not None:
-                if isinstance(pdf, str):
-                    pdf_path = pdf
-                elif hasattr(pdf, "name"):
-                    pdf_path = pdf.name
-
-            plan_json, map_html, pdf_out = await plan_trip(
-                dest, s_date, e_date, bdgt, curr, int(grp), ints,
-                audio, image, pdf_path, progress,
-            )
-
-            return json.loads(plan_json), map_html, pdf_out
-
-        plan_btn.click(
-            fn=on_plan_click,
-            inputs=[
-                destination, start_date, end_date, budget, currency,
-                group_size, interests, audio_input, image_input, pdf_input,
-            ],
-            outputs=[plan_output, map_output, pdf_output],
-        )
-
-        async def on_approve(feedback: str) -> str:
-            return await handle_approval("approved", feedback)
-
-        async def on_reject(feedback: str) -> str:
-            return await handle_approval("rejected", feedback)
-
-        approve_btn.click(
-            fn=on_approve,
-            inputs=[feedback_text],
-            outputs=[approval_output],
-        )
-        reject_btn.click(
-            fn=on_reject,
-            inputs=[feedback_text],
-            outputs=[approval_output],
-        )
-
-    return app
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-
-def main() -> None:
-    """Launch the Gradio application."""
-    app = build_app()
-    app.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        share=False,
-        theme=gr.themes.Soft(),
-    )
-
-
-if __name__ == "__main__":
-    main()

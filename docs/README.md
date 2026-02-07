@@ -12,17 +12,18 @@ Sistema de planejamento de viagens com agentes AI que demonstra padroes de produ
 
 ```
                          +-----------------+
-                         |     Gradio      |  :7860
-                         |    Frontend     |
+                         |   FastAPI SPA   |  :7860
+                         | Tailwind CSS UI |
+                         | /metrics /health|
                          +--------+--------+
                                   |
                    +--------------+--------------+
                    |                             |
           +--------v--------+          +---------v---------+
-          |   Multimodal    |          |   FastAPI Server   |  :8000
-          | - Audio (Whisper)|         | - /metrics         |
-          | - Image (Vision)|          | - /health          |
-          | - PDF (Claude)  |          | - /dashboard       |
+          |   Multimodal    |          |    REST API        |
+          | - Audio (Whisper)|         | - POST /api/plan   |
+          | - Image (Vision)|          | - POST /api/approve|
+          | - PDF (Claude)  |          | - GET /dashboard   |
           +---------+-------+          +--------------------+
                     |
           +---------v----------------------------------+
@@ -98,7 +99,7 @@ travel-orchestrator/
 |-- src/travel_orchestrator/
 |   |-- agents/              # Agentes especializados (reservado)
 |   |-- config/              # Settings e constantes de negocio
-|   |-- frontend/            # Gradio UI + dashboard HTML
+|   |-- frontend/            # FastAPI SPA + dashboard HTML
 |   |-- graph/               # LangGraph: planner_graph, edges, nodes/
 |   |-- mcp_servers/         # Weather, Hotels, Activities, Context
 |   |-- models/              # Modelos de dominio (reservado)
@@ -128,10 +129,10 @@ travel-orchestrator/
 | MCP | mcp | >= 1.1.0 |
 | Config | Pydantic Settings | >= 2.0 |
 | Logging | structlog | >= 24.0 |
-| Frontend | Gradio | >= 5.0 |
+| Frontend | FastAPI + Tailwind CSS | >= 0.115 |
 | Mapas | Folium | >= 0.15 |
 | PDF | ReportLab | >= 4.0 |
 | Transcricao | OpenAI Whisper (via httpx) | >= 0.27 |
 | Metricas | prometheus-client | >= 0.20 |
-| Metrics Server | FastAPI + Uvicorn | >= 0.115 |
+| Server | Uvicorn | >= 0.32 |
 | Testes | pytest + pytest-asyncio | >= 8.0 |

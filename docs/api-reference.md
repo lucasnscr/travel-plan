@@ -337,20 +337,38 @@ GET /dashboard  # -> Dashboard HTML com Chart.js
 
 ## Frontend
 
-### Gradio App
+### FastAPI SPA
+
+```python
+from travel_orchestrator.frontend.server import app
+
+# Executar com uvicorn
+import uvicorn
+uvicorn.run(app, host="0.0.0.0", port=7860)
+```
+
+#### Endpoints
+
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| GET | `/` | Serve a SPA (Tailwind CSS) |
+| POST | `/api/plan` | Executa pipeline de planejamento |
+| POST | `/api/approve` | Aprovacao/rejeicao do plano |
+| GET | `/api/map/{filename}` | Serve mapa HTML gerado |
+| GET | `/api/pdf/{filename}` | Download PDF gerado |
+| GET | `/health` | Health check |
+| GET | `/metrics` | Metricas Prometheus |
+| GET | `/dashboard` | Dashboard de monitoramento |
+
+### Business Logic
 
 ```python
 from travel_orchestrator.frontend.app import (
-    build_app,
     plan_trip,
     handle_approval,
 )
 
-# Construir app Gradio
-app = build_app()
-app.launch(server_name="0.0.0.0", server_port=7860)
-
-# Pipeline principal (usado internamente pelo UI)
+# Pipeline principal
 plan_json, map_html, pdf_path = await plan_trip(
     destination="Paris",
     start_date="2026-07-01",
@@ -362,7 +380,6 @@ plan_json, map_html, pdf_path = await plan_trip(
     audio_file=None,
     image_file=None,
     pdf_file=None,
-    progress=gr.Progress(),
 )
 
 # Aprovacao/rejeicao

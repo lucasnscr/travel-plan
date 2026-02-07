@@ -3,12 +3,16 @@
 Contains a curated database of activities for popular destinations,
 with realistic hours, prices, categories, and seasonal events.
 Same inputs always produce the same outputs (seeded RNG).
+
+Also provides mock implementations for Google Places API tools
+so the system works without an API key configured.
 """
 
 from __future__ import annotations
 
 import datetime
 import hashlib
+import math
 import random
 from typing import Any
 
@@ -400,23 +404,23 @@ def discover_activities(
     results: list[Activity] = []
     for idx, (score, entry) in enumerate(diverse):
         hours = dict(_HOURS_BY_CATEGORY.get(entry["category"], _TOUR_HOURS))
-        results.append(
-            Activity(
-                id=f"act-{key[:3]}-{idx:03d}",
-                name=entry["name"],
-                category=entry["category"],
-                address=entry["address"],
-                coordinates={"lat": entry["lat"], "lng": entry["lng"]},
-                duration_minutes=entry["duration"],
-                price=entry["price"],
-                currency=entry["currency"],
-                opening_hours=hours,
-                requires_booking=entry["requires_booking"],
-                indoor=entry["indoor"],
-                description=entry["description"],
-                score=round(score, 4),
-            )
+        act: Activity = Activity(
+            id=f"act-{key[:3]}-{idx:03d}",
+            name=entry["name"],
+            category=entry["category"],
+            address=entry["address"],
+            coordinates={"lat": entry["lat"], "lng": entry["lng"]},
+            duration_minutes=entry["duration"],
+            price=entry["price"],
+            currency=entry["currency"],
+            opening_hours=hours,
+            requires_booking=entry["requires_booking"],
+            indoor=entry["indoor"],
+            description=entry["description"],
+            score=round(score, 4),
         )
+        act["data_source"] = "mock"  # type: ignore[typeddict-unknown-key]
+        results.append(act)
 
     return results
 
@@ -454,3 +458,489 @@ def _date_range(
         days.append(current)
         current += datetime.timedelta(days=1)
     return days
+
+
+def _make_place_id(name: str) -> str:
+    """Generate a deterministic mock place_id from name."""
+    return "ChIJ" + hashlib.sha256(name.lower().encode()).hexdigest()[:20]
+
+
+def _haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Approximate distance in km between two points."""
+    r = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(dlng / 2) ** 2
+    )
+    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+# ---------------------------------------------------------------------------
+# City coordinates for mock geocoding
+# ---------------------------------------------------------------------------
+
+_CITY_COORDS: dict[str, tuple[float, float]] = {
+    "rio de janeiro": (-22.9068, -43.1729),
+    "são paulo": (-23.5505, -46.6333),
+    "paris": (48.8566, 2.3522),
+    "lisbon": (38.7223, -9.1393),
+    "tokyo": (35.6762, 139.6503),
+    "london": (51.5074, -0.1278),
+}
+
+
+# ---------------------------------------------------------------------------
+# Mock implementations for new MCP tools
+# ---------------------------------------------------------------------------
+
+
+def generate_text_search(
+    query: str,
+    location: str,
+    *,
+    max_results: int = 20,
+) -> list[dict[str, Any]]:
+    """Mock text search returning activities matching query at location."""
+    key = location.lower().strip()
+    pool = list(_ACTIVITIES_DB.get(key, []))
+    query_lower = query.lower()
+
+    rng = random.Random(_seed_for(location, query))
+
+    # Score by relevance to query
+    scored: list[tuple[float, RawEntry]] = []
+    for entry in pool:
+        name_match = 1.0 if query_lower in entry["name"].lower() else 0.0
+        desc_match = 0.5 if query_lower in entry["description"].lower() else 0.0
+        tag_match = 0.3 if any(query_lower in t for t in entry["tags"]) else 0.0
+        cat_match = 0.2 if query_lower in entry["category"] else 0.0
+        score = name_match + desc_match + tag_match + cat_match + 0.1 * rng.random()
+        if score > 0.05:  # some minimal relevance
+            scored.append((score, entry))
+
+    # If no matches, return top entries by base_score
+    if not scored:
+        scored = [(entry["base_score"], entry) for entry in pool]
+
+    scored.sort(key=lambda t: t[0], reverse=True)
+
+    results: list[dict[str, Any]] = []
+    for _, entry in scored[:max_results]:
+        place_id = _make_place_id(entry["name"])
+        results.append({
+            "place_id": place_id,
+            "name": entry["name"],
+            "category": entry["category"],
+            "address": entry["address"],
+            "location": {"lat": entry["lat"], "lng": entry["lng"]},
+            "rating": round(entry["base_score"] * 5, 1),
+            "user_ratings_total": rng.randint(100, 5000),
+            "price_level": _price_to_level(entry["price"], entry["currency"]),
+            "types": _category_to_types(entry["category"]),
+            "photos": [],
+            "opening_hours": {
+                "open_now": True,
+                "weekday_text": _hours_to_weekday_text(
+                    _HOURS_BY_CATEGORY.get(entry["category"], _TOUR_HOURS)
+                ),
+            },
+            "description": entry["description"],
+            "data_source": "mock",
+        })
+
+    return results
+
+
+def generate_restaurant_search(
+    location: str,
+    *,
+    cuisine: str | None = None,
+    price_level: int | None = None,
+    max_results: int = 20,
+) -> list[dict[str, Any]]:
+    """Mock restaurant search at location."""
+    key = location.lower().strip()
+    pool = list(_ACTIVITIES_DB.get(key, []))
+    rng = random.Random(_seed_for(location, f"restaurant:{cuisine}"))
+
+    results: list[dict[str, Any]] = []
+    for entry in pool:
+        if entry["category"] != "restaurant":
+            continue
+        if cuisine and cuisine.lower() not in entry["description"].lower():
+            continue
+        level = _price_to_level(entry["price"], entry["currency"])
+        if price_level is not None and level is not None and level > price_level:
+            continue
+
+        place_id = _make_place_id(entry["name"])
+        results.append({
+            "place_id": place_id,
+            "name": entry["name"],
+            "category": "restaurant",
+            "address": entry["address"],
+            "location": {"lat": entry["lat"], "lng": entry["lng"]},
+            "rating": round(entry["base_score"] * 5, 1),
+            "user_ratings_total": rng.randint(200, 8000),
+            "price_level": level,
+            "types": ["restaurant"],
+            "photos": [],
+            "opening_hours": {
+                "open_now": True,
+                "weekday_text": _hours_to_weekday_text(_RESTAURANT_HOURS),
+            },
+            "description": entry["description"],
+            "data_source": "mock",
+        })
+
+    results.sort(key=lambda r: r["rating"], reverse=True)
+    return results[:max_results]
+
+
+def generate_nearby_search(
+    latitude: float,
+    longitude: float,
+    radius_meters: int = 1000,
+    *,
+    place_type: str = "tourist_attraction",
+    max_results: int = 20,
+) -> list[dict[str, Any]]:
+    """Mock nearby search around coordinates."""
+    radius_km = radius_meters / 1000.0
+    rng = random.Random(int(latitude * 1000) + int(longitude * 1000))
+
+    # Find closest city
+    closest_city = _find_closest_city(latitude, longitude)
+    pool = list(_ACTIVITIES_DB.get(closest_city, []))
+
+    type_to_cat = {
+        "tourist_attraction": {"tour", "museum"},
+        "restaurant": {"restaurant"},
+        "park": {"nature"},
+        "museum": {"museum"},
+        "shopping_mall": {"shopping"},
+        "night_club": {"nightlife"},
+    }
+    allowed_cats = type_to_cat.get(place_type, {"tour", "museum", "nature"})
+
+    results: list[dict[str, Any]] = []
+    for entry in pool:
+        if entry["category"] not in allowed_cats:
+            continue
+        dist = _haversine(latitude, longitude, entry["lat"], entry["lng"])
+        if dist > radius_km:
+            continue
+
+        place_id = _make_place_id(entry["name"])
+        results.append({
+            "place_id": place_id,
+            "name": entry["name"],
+            "category": entry["category"],
+            "address": entry["address"],
+            "location": {"lat": entry["lat"], "lng": entry["lng"]},
+            "rating": round(entry["base_score"] * 5, 1),
+            "user_ratings_total": rng.randint(100, 5000),
+            "price_level": _price_to_level(entry["price"], entry["currency"]),
+            "types": _category_to_types(entry["category"]),
+            "photos": [],
+            "distance_km": round(dist, 2),
+            "description": entry["description"],
+            "data_source": "mock",
+        })
+
+    results.sort(key=lambda r: r.get("distance_km", 999))
+    return results[:max_results]
+
+
+def generate_place_details(place_id: str) -> dict[str, Any]:
+    """Mock place details for a given place_id."""
+    # Search all cities for a matching entry
+    for city, entries in _ACTIVITIES_DB.items():
+        for entry in entries:
+            if _make_place_id(entry["name"]) == place_id:
+                rng = random.Random(_seed_for(entry["name"]))
+                hours = _HOURS_BY_CATEGORY.get(entry["category"], _TOUR_HOURS)
+                return {
+                    "place_id": place_id,
+                    "name": entry["name"],
+                    "category": entry["category"],
+                    "address": entry["address"],
+                    "location": {"lat": entry["lat"], "lng": entry["lng"]},
+                    "rating": round(entry["base_score"] * 5, 1),
+                    "user_ratings_total": rng.randint(200, 10000),
+                    "price_level": _price_to_level(entry["price"], entry["currency"]),
+                    "types": _category_to_types(entry["category"]),
+                    "photos": [],
+                    "opening_hours": {
+                        "open_now": True,
+                        "weekday_text": _hours_to_weekday_text(hours),
+                    },
+                    "description": entry["description"],
+                    "reviews": _generate_mock_reviews(entry["name"], rng),
+                    "url": f"https://maps.google.com/?cid={abs(hash(place_id)) % 10**15}",
+                    "business_status": "OPERATIONAL",
+                    "website": f"https://www.{entry['name'].lower().replace(' ', '')}.com",
+                    "phone": f"+{rng.randint(1, 99)} {rng.randint(100, 999)} {rng.randint(1000, 9999)}",
+                    "data_source": "mock",
+                }
+
+    # Unknown place_id: synthetic
+    rng = random.Random(_seed_for(place_id))
+    return {
+        "place_id": place_id,
+        "name": f"Place {place_id[-6:]}",
+        "category": "tour",
+        "address": "Unknown address",
+        "location": {"lat": 0.0, "lng": 0.0},
+        "rating": round(rng.uniform(3.0, 5.0), 1),
+        "user_ratings_total": rng.randint(10, 500),
+        "price_level": rng.randint(0, 3),
+        "types": ["point_of_interest"],
+        "photos": [],
+        "opening_hours": {
+            "open_now": True,
+            "weekday_text": _hours_to_weekday_text(_TOUR_HOURS),
+        },
+        "description": "A local point of interest.",
+        "reviews": [],
+        "url": "",
+        "business_status": "OPERATIONAL",
+        "data_source": "mock",
+    }
+
+
+def generate_place_photos(place_id: str, max_photos: int = 5) -> list[dict[str, Any]]:
+    """Mock place photos for a given place_id."""
+    rng = random.Random(_seed_for(place_id, "photos"))
+    photos: list[dict[str, Any]] = []
+    for i in range(min(max_photos, 5)):
+        photos.append({
+            "photo_reference": f"mock-photo-{place_id[-8:]}-{i}",
+            "url": f"https://mock.photos/{place_id[-8:]}/{i}.jpg",
+            "width": rng.choice([800, 1200, 1600]),
+            "height": rng.choice([600, 800, 1200]),
+            "attributions": ["Mock Photography"],
+            "data_source": "mock",
+        })
+    return photos
+
+
+def generate_directions(
+    origin: str,
+    destination: str,
+    *,
+    mode: str = "walking",
+) -> dict[str, Any]:
+    """Mock directions between two points."""
+    rng = random.Random(_seed_for(origin, destination))
+
+    # Try to resolve origin/destination to coords
+    origin_coords = _resolve_location(origin)
+    dest_coords = _resolve_location(destination)
+    dist = _haversine(
+        origin_coords[0], origin_coords[1],
+        dest_coords[0], dest_coords[1],
+    )
+    dist_meters = int(dist * 1000)
+
+    speed_map = {
+        "walking": 5.0,
+        "driving": 40.0,
+        "transit": 25.0,
+        "bicycling": 15.0,
+    }
+    speed = speed_map.get(mode, 5.0)
+    duration_seconds = int((dist / speed) * 3600)
+
+    return {
+        "summary": f"Via mock route ({mode})",
+        "distance_meters": dist_meters,
+        "duration_seconds": duration_seconds,
+        "start_address": origin,
+        "end_address": destination,
+        "steps": [
+            {
+                "instruction": f"Head toward {destination}",
+                "distance_meters": dist_meters,
+                "duration_seconds": duration_seconds,
+                "travel_mode": mode.upper(),
+            }
+        ],
+        "polyline": "",
+        "data_source": "mock",
+    }
+
+
+def generate_geocode(address: str) -> list[dict[str, Any]]:
+    """Mock forward geocode: address → coordinates."""
+    key = address.lower().strip()
+    for city, (lat, lng) in _CITY_COORDS.items():
+        if city in key or key in city:
+            return [{
+                "place_id": _make_place_id(city),
+                "formatted_address": address,
+                "location": {"lat": lat, "lng": lng},
+                "types": ["locality", "political"],
+                "data_source": "mock",
+            }]
+
+    # Search activity database for address matches
+    for city, entries in _ACTIVITIES_DB.items():
+        for entry in entries:
+            if key in entry["name"].lower() or key in entry["address"].lower():
+                return [{
+                    "place_id": _make_place_id(entry["name"]),
+                    "formatted_address": entry["address"],
+                    "location": {"lat": entry["lat"], "lng": entry["lng"]},
+                    "types": ["point_of_interest"],
+                    "data_source": "mock",
+                }]
+
+    # Unknown location: return Paris as default
+    return [{
+        "place_id": _make_place_id(address),
+        "formatted_address": address,
+        "location": {"lat": 48.8566, "lng": 2.3522},
+        "types": ["geocode"],
+        "data_source": "mock",
+    }]
+
+
+def generate_reverse_geocode(
+    latitude: float, longitude: float,
+) -> list[dict[str, Any]]:
+    """Mock reverse geocode: coordinates → address."""
+    closest_city = _find_closest_city(latitude, longitude)
+    coords = _CITY_COORDS.get(closest_city, (latitude, longitude))
+
+    # Find closest activity
+    pool = _ACTIVITIES_DB.get(closest_city, [])
+    best_entry: RawEntry | None = None
+    best_dist = float("inf")
+    for entry in pool:
+        d = _haversine(latitude, longitude, entry["lat"], entry["lng"])
+        if d < best_dist:
+            best_dist = d
+            best_entry = entry
+
+    if best_entry and best_dist < 2.0:
+        return [{
+            "place_id": _make_place_id(best_entry["name"]),
+            "formatted_address": best_entry["address"],
+            "location": {"lat": best_entry["lat"], "lng": best_entry["lng"]},
+            "types": ["point_of_interest", "establishment"],
+            "data_source": "mock",
+        }]
+
+    return [{
+        "place_id": _make_place_id(f"{latitude}:{longitude}"),
+        "formatted_address": f"Near {closest_city.title()}",
+        "location": {"lat": coords[0], "lng": coords[1]},
+        "types": ["locality"],
+        "data_source": "mock",
+    }]
+
+
+# ---------------------------------------------------------------------------
+# Additional helpers for mock functions
+# ---------------------------------------------------------------------------
+
+
+def _find_closest_city(lat: float, lng: float) -> str:
+    """Find the closest city in our database to given coordinates."""
+    best_city = "paris"
+    best_dist = float("inf")
+    for city, (clat, clng) in _CITY_COORDS.items():
+        d = _haversine(lat, lng, clat, clng)
+        if d < best_dist:
+            best_dist = d
+            best_city = city
+    return best_city
+
+
+def _resolve_location(name: str) -> tuple[float, float]:
+    """Resolve a location name to coordinates (best-effort)."""
+    key = name.lower().strip()
+    for city, coords in _CITY_COORDS.items():
+        if city in key or key in city:
+            return coords
+
+    for city, entries in _ACTIVITIES_DB.items():
+        for entry in entries:
+            if key in entry["name"].lower() or key in entry["address"].lower():
+                return (entry["lat"], entry["lng"])
+
+    return (48.8566, 2.3522)  # default to Paris
+
+
+def _price_to_level(price: float, currency: str) -> int | None:
+    """Convert a price to a Google-style price level (0-4)."""
+    if price == 0:
+        return 0
+    # Rough thresholds by currency
+    thresholds: dict[str, list[float]] = {
+        "EUR": [10, 30, 80, 150],
+        "USD": [10, 30, 80, 150],
+        "GBP": [8, 25, 60, 120],
+        "BRL": [30, 80, 200, 500],
+        "JPY": [500, 2000, 5000, 10000],
+    }
+    levels = thresholds.get(currency, [10, 30, 80, 150])
+    for i, threshold in enumerate(levels):
+        if price <= threshold:
+            return i + 1
+    return 4
+
+
+def _category_to_types(category: str) -> list[str]:
+    """Map our category to Google place types."""
+    mapping = {
+        "museum": ["museum", "tourist_attraction"],
+        "restaurant": ["restaurant", "food"],
+        "tour": ["tourist_attraction", "point_of_interest"],
+        "nature": ["park", "natural_feature"],
+        "shopping": ["shopping_mall", "store"],
+        "nightlife": ["night_club", "bar"],
+    }
+    return mapping.get(category, ["point_of_interest"])
+
+
+def _hours_to_weekday_text(hours: dict[str, str]) -> list[str]:
+    """Convert our hours dict to Google-style weekday_text list."""
+    day_order = [
+        "monday", "tuesday", "wednesday", "thursday",
+        "friday", "saturday", "sunday",
+    ]
+    return [
+        f"{day.capitalize()}: {hours.get(day, 'closed')}"
+        for day in day_order
+    ]
+
+
+def _generate_mock_reviews(
+    name: str, rng: random.Random, count: int = 3,
+) -> list[dict[str, str | float]]:
+    """Generate mock reviews for a place."""
+    templates = [
+        "Amazing place! {name} exceeded all expectations.",
+        "Great experience at {name}. Highly recommended.",
+        "Visited {name} last week. Beautiful and well-maintained.",
+        "{name} is a must-see. Don't miss it!",
+        "Nice place but can be crowded. {name} is worth the wait.",
+    ]
+    authors = ["Maria S.", "John D.", "Ana L.", "Pedro M.", "Sophie T."]
+
+    reviews: list[dict[str, str | float]] = []
+    for i in range(min(count, len(templates))):
+        reviews.append({
+            "author": authors[i % len(authors)],
+            "rating": round(rng.uniform(3.5, 5.0), 1),
+            "text": templates[i].format(name=name),
+            "time": f"2025-0{rng.randint(1, 9)}-{rng.randint(10, 28)}",
+            "language": "en",
+        })
+    return reviews

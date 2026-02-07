@@ -7,6 +7,7 @@ Same inputs always produce the same outputs.
 from __future__ import annotations
 
 import hashlib
+import math
 import random
 from typing import Any
 
@@ -102,6 +103,30 @@ _HOTELS_DB: dict[str, list[_RawHotel]] = {
 
 
 # ---------------------------------------------------------------------------
+# Facility/amenity catalog
+# ---------------------------------------------------------------------------
+
+_FACILITY_CATALOG: dict[str, str] = {
+    "wifi": "connectivity",
+    "breakfast": "food_drink",
+    "restaurant": "food_drink",
+    "bar": "food_drink",
+    "room_service": "food_drink",
+    "pool": "wellness",
+    "spa": "wellness",
+    "gym": "wellness",
+    "air_conditioning": "room",
+    "parking": "transport",
+    "airport_shuttle": "transport",
+    "concierge": "services",
+    "laundry": "services",
+    "beach_access": "outdoor",
+    "garden": "outdoor",
+    "pet_friendly": "policies",
+}
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -109,6 +134,15 @@ _HOTELS_DB: dict[str, list[_RawHotel]] = {
 def _seed_for(destination: str, check_in: str, check_out: str) -> int:
     raw = f"{destination.lower().strip()}:{check_in}:{check_out}"
     return int(hashlib.sha256(raw.encode()).hexdigest()[:8], 16)
+
+
+def _seed_for_id(hotel_id: str) -> int:
+    return int(hashlib.sha256(hotel_id.encode()).hexdigest()[:8], 16)
+
+
+def _make_hotel_id(name: str) -> str:
+    """Generate a deterministic hotel ID from the name."""
+    return hashlib.sha256(name.lower().encode()).hexdigest()[:12]
 
 
 def generate_hotels(
@@ -142,12 +176,13 @@ def generate_hotels(
 
     results: list[dict[str, Any]] = []
     for hotel in pool:
-        # Add small price jitter for realism (±10%)
+        # Add small price jitter for realism (+-10%)
         jitter = rng.uniform(0.90, 1.10)
         nightly = round(hotel["nightly_price"] * jitter, 2)
         total = round(nightly * nights, 2)
 
         results.append({
+            "hotel_id": _make_hotel_id(hotel["name"]),
             "name": hotel["name"],
             "stars": hotel["stars"],
             "review_score": hotel["review_score"],
@@ -160,9 +195,134 @@ def generate_hotels(
             "distance_to_center_km": hotel["distance_to_center_km"],
             "amenities": list(hotel["amenities"]),
             "deep_link": None,
+            "photos": [],
+            "data_source": "mock",
         })
 
     return results
+
+
+def generate_hotel_details(hotel_id: str) -> dict[str, Any]:
+    """Return mock hotel details for a given hotel_id.
+
+    Looks up the hotel in the DB by matching the generated ID, or
+    synthesizes details from the ID seed.
+    """
+    # Search across all cities for matching hotel
+    for city_hotels in _HOTELS_DB.values():
+        for hotel in city_hotels:
+            if _make_hotel_id(hotel["name"]) == hotel_id:
+                return _build_detail_from_db(hotel, hotel_id)
+
+    # Not found — generate synthetic details
+    return _build_synthetic_detail(hotel_id)
+
+
+def generate_facilities(hotel_id: str) -> list[dict[str, Any]]:
+    """Return mock facilities for a hotel."""
+    # Try to find in DB
+    for city_hotels in _HOTELS_DB.values():
+        for hotel in city_hotels:
+            if _make_hotel_id(hotel["name"]) == hotel_id:
+                return [
+                    {
+                        "name": a,
+                        "category": _FACILITY_CATALOG.get(a, "general"),
+                        "available": True,
+                        "data_source": "mock",
+                    }
+                    for a in hotel["amenities"]
+                ]
+
+    # Synthetic
+    rng = random.Random(_seed_for_id(hotel_id))
+    all_amenities = list(_FACILITY_CATALOG.keys())
+    count = rng.randint(3, 8)
+    selected = rng.sample(all_amenities, min(count, len(all_amenities)))
+    return [
+        {
+            "name": a,
+            "category": _FACILITY_CATALOG[a],
+            "available": True,
+            "data_source": "mock",
+        }
+        for a in selected
+    ]
+
+
+def generate_nearby_hotels(
+    latitude: float,
+    longitude: float,
+    radius_km: float,
+    check_in: str,
+    check_out: str,
+    adults: int = 1,
+) -> list[dict[str, Any]]:
+    """Return mock hotels near a coordinate point."""
+    import datetime
+
+    nights = (
+        datetime.date.fromisoformat(check_out)
+        - datetime.date.fromisoformat(check_in)
+    ).days
+    if nights <= 0:
+        nights = 1
+
+    # Find the closest city in our DB
+    best_city: str | None = None
+    best_dist = float("inf")
+
+    city_centers: dict[str, tuple[float, float]] = {
+        "paris": (48.8566, 2.3522),
+        "tokyo": (35.6762, 139.6503),
+        "rio de janeiro": (-22.9068, -43.1729),
+        "london": (51.5074, -0.1278),
+        "lisbon": (38.7223, -9.1393),
+        "são paulo": (-23.5505, -46.6333),
+    }
+
+    for city, (clat, clng) in city_centers.items():
+        dist = _haversine(latitude, longitude, clat, clng)
+        if dist < best_dist:
+            best_dist = dist
+            best_city = city
+
+    if best_city and best_dist < 100:  # within 100km
+        return generate_hotels(best_city, check_in, check_out, adults)
+
+    # No nearby city — generate synthetic
+    seed_str = f"{round(latitude, 2)}:{round(longitude, 2)}:{check_in}:{check_out}"
+    rng = random.Random(int(hashlib.sha256(seed_str.encode()).hexdigest()[:8], 16))
+
+    results: list[dict[str, Any]] = []
+    for i in range(5):
+        nightly = round(rng.uniform(50, 350), 2)
+        total = round(nightly * nights, 2)
+        dist = round(rng.uniform(0.1, radius_km), 1)
+        results.append({
+            "hotel_id": hashlib.sha256(f"nearby_{i}_{latitude}_{longitude}".encode()).hexdigest()[:12],
+            "name": f"Hotel Near Point {i + 1}",
+            "stars": rng.choice([3, 4, 5]),
+            "review_score": round(rng.uniform(7.0, 9.5), 1),
+            "price_total": total,
+            "currency": "USD",
+            "nightly_price_avg": nightly,
+            "latitude": latitude + rng.uniform(-0.02, 0.02),
+            "longitude": longitude + rng.uniform(-0.02, 0.02),
+            "area": "Nearby",
+            "distance_to_center_km": dist,
+            "amenities": ["wifi", "breakfast"],
+            "deep_link": None,
+            "photos": [],
+            "data_source": "mock",
+        })
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 
 def _generate_synthetic(city: str) -> list[_RawHotel]:
@@ -193,3 +353,183 @@ def _generate_synthetic(city: str) -> list[_RawHotel]:
             )
         )
     return hotels
+
+
+def _build_detail_from_db(hotel: _RawHotel, hotel_id: str) -> dict[str, Any]:
+    """Build a mock HotelDetail dict from a DB entry."""
+    rng = random.Random(_seed_for_id(hotel_id))
+
+    rooms = [
+        {
+            "room_id": f"{hotel_id}_std",
+            "name": "Standard Room",
+            "type": "standard",
+            "max_occupancy": 2,
+            "bed_type": "double",
+            "size_sqm": rng.randint(18, 25),
+            "price_per_night": hotel["nightly_price"],
+            "currency": hotel["currency"],
+            "breakfast_included": "breakfast" in hotel["amenities"],
+            "cancellation_policy": "free_cancellation",
+        },
+        {
+            "room_id": f"{hotel_id}_dlx",
+            "name": "Deluxe Room",
+            "type": "deluxe",
+            "max_occupancy": 2,
+            "bed_type": "king",
+            "size_sqm": rng.randint(28, 40),
+            "price_per_night": round(hotel["nightly_price"] * 1.5, 2),
+            "currency": hotel["currency"],
+            "breakfast_included": True,
+            "cancellation_policy": "free_cancellation",
+        },
+    ]
+
+    if hotel["stars"] >= 4:
+        rooms.append({
+            "room_id": f"{hotel_id}_ste",
+            "name": "Suite",
+            "type": "suite",
+            "max_occupancy": 3,
+            "bed_type": "king",
+            "size_sqm": rng.randint(45, 70),
+            "price_per_night": round(hotel["nightly_price"] * 2.5, 2),
+            "currency": hotel["currency"],
+            "breakfast_included": True,
+            "cancellation_policy": "free_cancellation",
+        })
+
+    facilities = [
+        {
+            "name": a,
+            "category": _FACILITY_CATALOG.get(a, "general"),
+            "available": True,
+        }
+        for a in hotel["amenities"]
+    ]
+
+    review_cats = {
+        "cleanliness": round(rng.uniform(hotel["review_score"] - 0.5, min(10, hotel["review_score"] + 0.5)), 1),
+        "comfort": round(rng.uniform(hotel["review_score"] - 0.5, min(10, hotel["review_score"] + 0.5)), 1),
+        "location": round(rng.uniform(hotel["review_score"] - 0.3, min(10, hotel["review_score"] + 0.7)), 1),
+        "staff": round(rng.uniform(hotel["review_score"] - 0.3, min(10, hotel["review_score"] + 0.5)), 1),
+        "value_for_money": round(rng.uniform(hotel["review_score"] - 0.8, min(10, hotel["review_score"] + 0.3)), 1),
+    }
+
+    return {
+        "hotel_id": hotel_id,
+        "name": hotel["name"],
+        "description": f"A lovely {hotel['stars']}-star hotel in the {hotel['area']} area.",
+        "stars": hotel["stars"],
+        "address": f"{hotel['area']}, near city center",
+        "location": {
+            "lat": hotel["lat"],
+            "lng": hotel["lng"],
+            "area": hotel["area"],
+        },
+        "check_in_time": "14:00",
+        "check_out_time": "11:00",
+        "photos": [],
+        "rooms": rooms,
+        "rates": [
+            {
+                "rate_id": f"{hotel_id}_rate_std",
+                "room_name": "Standard Room",
+                "price_per_night": hotel["nightly_price"],
+                "total_price": hotel["nightly_price"],
+                "currency": hotel["currency"],
+                "meal_plan": "breakfast_included" if "breakfast" in hotel["amenities"] else "room_only",
+                "cancellation": "free_cancellation",
+                "payment": "pay_at_property",
+            },
+        ],
+        "review": {
+            "overall_score": hotel["review_score"],
+            "total_reviews": rng.randint(100, 5000),
+            "categories": review_cats,
+            "recent_highlights": [
+                "Great location",
+                "Friendly staff",
+                "Clean rooms",
+            ],
+        },
+        "facilities": facilities,
+        "policies": {
+            "check_in": "14:00",
+            "check_out": "11:00",
+            "cancellation": "Free cancellation up to 24h before check-in",
+            "children": "Children of all ages are welcome",
+            "pets": "Pets are not allowed",
+        },
+        "data_source": "mock",
+    }
+
+
+def _build_synthetic_detail(hotel_id: str) -> dict[str, Any]:
+    """Build synthetic hotel details for an unknown hotel_id."""
+    rng = random.Random(_seed_for_id(hotel_id))
+
+    stars = rng.choice([3, 4, 5])
+    nightly = round(rng.uniform(60, 400), 2)
+    review_score = round(rng.uniform(7.0, 9.5), 1)
+
+    return {
+        "hotel_id": hotel_id,
+        "name": f"Hotel {hotel_id[:6].upper()}",
+        "description": f"A comfortable {stars}-star hotel.",
+        "stars": stars,
+        "address": "Central area",
+        "location": {"lat": 0.0, "lng": 0.0, "area": "City Centre"},
+        "check_in_time": "14:00",
+        "check_out_time": "11:00",
+        "photos": [],
+        "rooms": [
+            {
+                "room_id": f"{hotel_id}_std",
+                "name": "Standard Room",
+                "type": "standard",
+                "max_occupancy": 2,
+                "bed_type": "double",
+                "size_sqm": rng.randint(18, 25),
+                "price_per_night": nightly,
+                "currency": "EUR",
+                "breakfast_included": False,
+                "cancellation_policy": "non_refundable",
+            },
+        ],
+        "rates": [
+            {
+                "rate_id": f"{hotel_id}_rate_std",
+                "room_name": "Standard Room",
+                "price_per_night": nightly,
+                "total_price": nightly,
+                "currency": "EUR",
+                "meal_plan": "room_only",
+                "cancellation": "non_refundable",
+                "payment": "pay_now",
+            },
+        ],
+        "review": {
+            "overall_score": review_score,
+            "total_reviews": rng.randint(10, 500),
+            "categories": {},
+            "recent_highlights": [],
+        },
+        "facilities": generate_facilities(hotel_id),
+        "policies": {
+            "check_in": "14:00",
+            "check_out": "11:00",
+        },
+        "data_source": "mock",
+    }
+
+
+def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate the great-circle distance between two points in km."""
+    r = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))

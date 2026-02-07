@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40">
+  <defs>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+  </defs>
+  <circle cx="20" cy="20" r="16" fill="none" stroke="url(#brand)" stroke-width="2"/>
+  <path d="M14 26 L20 12 L26 26 L20 22 Z" fill="url(#brand)"/>
+  <text x="44" y="26" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-weight="700" font-size="16" fill="url(#brand)">Travel Orchestrator</text>
+</svg>

@@ -113,14 +113,21 @@ class TestGenerateAlerts:
 
 
 class TestListTools:
-    async def test_returns_two_tools(self) -> None:
+    async def test_returns_six_tools(self) -> None:
         tools = await list_tools()
-        assert len(tools) == 2
+        assert len(tools) == 6
 
     async def test_tool_names(self) -> None:
         tools = await list_tools()
         names = {t.name for t in tools}
-        assert names == {"get_weather_forecast", "get_weather_alerts"}
+        assert names == {
+            "get_weather_forecast",
+            "get_weather_alerts",
+            "get_current_weather",
+            "get_forecast",
+            "get_hourly_forecast",
+            "get_air_quality",
+        }
 
     async def test_forecast_tool_schema(self) -> None:
         tools = await list_tools()

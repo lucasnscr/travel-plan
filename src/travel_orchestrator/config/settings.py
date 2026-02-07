@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     max_retries: int = Field(3, description="Max retries para tool calls")
     timeout_seconds: int = Field(30, description="Timeout padrão")
 
+    # Hotel search providers
+    rapidapi_key: str | None = Field(None, description="RapidAPI key for Booking.com API")
+    serpapi_key: str | None = Field(None, description="SerpAPI key (fallback hotel search)")
+
+    # Google Maps / Places API (activities, directions, geocoding)
+    google_maps_api_key: str | None = Field(None, description="Google Maps API key for Places, Directions, Geocoding")
+
     # Enuygun MCP (hotel search upstream)
     enuygun_mcp_url: str = Field(
         "https://mcp.enuygun.com/mcp", description="Enuygun upstream MCP endpoint"

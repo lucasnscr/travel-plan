@@ -6,8 +6,7 @@
 
 | Porta | Servico | Descricao |
 |-------|---------|-----------|
-| 7860 | Gradio | Interface web do planejador |
-| 8000 | FastAPI | Metricas Prometheus + health check + dashboard |
+| 7860 | FastAPI | Interface web + API + metricas + health |
 | 6379 | Redis | Cache e armazenamento de estado |
 | 9090 | Prometheus | Interface de monitoramento |
 
@@ -18,7 +17,7 @@
 docker build -t travel-orchestrator .
 
 # Executar standalone
-docker run -p 7860:7860 -p 8000:8000 \
+docker run -p 7860:7860 \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   travel-orchestrator
 ```
@@ -43,7 +42,7 @@ docker compose logs -f app
 
 | Servico | Imagem | Funcao |
 |---------|--------|--------|
-| `app` | Build local | Gradio frontend + FastAPI metrics |
+| `app` | Build local | FastAPI SPA + API + metrics |
 | `redis` | redis:7-alpine | Cache e state storage |
 | `prometheus` | prom/prometheus:latest | Coleta e armazena metricas |
 
@@ -51,7 +50,7 @@ docker compose logs -f app
 
 Os servicos se comunicam pela rede interna do Docker Compose:
 - `app` acessa Redis via `redis://redis:6379/0`
-- `prometheus` scrapa metricas de `app:8000/metrics`
+- `prometheus` scrapa metricas de `app:7860/metrics`
 
 ### Dockerfile
 
@@ -67,9 +66,8 @@ O Dockerfile usa Python 3.11-slim e Poetry:
 
 #### Entrypoint
 
-O script `scripts/entrypoint.sh` inicia dois processos:
-1. **Uvicorn** (background): FastAPI metrics server na porta 8000
-2. **Gradio** (foreground via `exec`): Frontend na porta 7860
+O script `scripts/entrypoint.sh` inicia um unico processo:
+1. **Uvicorn** (foreground via `exec`): FastAPI server na porta 7860 (SPA + API + metrics)
 
 ### Healthcheck
 
@@ -99,7 +97,7 @@ scrape_configs:
   - job_name: 'travel-orchestrator'
     metrics_path: /metrics
     static_configs:
-      - targets: ['app:8000']
+      - targets: ['app:7860']
 ```
 
 ### Metricas Disponiveis
@@ -118,8 +116,8 @@ scrape_configs:
 
 | Endpoint | URL | Descricao |
 |----------|-----|-----------|
-| Metricas raw | http://localhost:8000/metrics | Formato Prometheus text |
-| Dashboard | http://localhost:8000/dashboard | Dashboard HTML com Chart.js |
+| Metricas raw | http://localhost:7860/metrics | Formato Prometheus text |
+| Dashboard | http://localhost:7860/dashboard | Dashboard HTML com Chart.js |
 | Prometheus UI | http://localhost:9090 | Interface nativa do Prometheus |
 
 ### Queries PromQL Uteis
@@ -165,15 +163,11 @@ export PYTHONPATH=src
 ### Executando
 
 ```bash
-# Frontend Gradio (porta 7860)
+# Servidor unico (porta 7860) — SPA + API + metrics
 python -m travel_orchestrator.frontend
 
-# Metrics server separado (porta 9090)
-uvicorn travel_orchestrator.observability.server:app --port 9090
-
-# Ou ambos (como o Docker faz)
-uvicorn travel_orchestrator.observability.server:app --port 8000 &
-python -m travel_orchestrator.frontend
+# Ou diretamente com uvicorn
+uvicorn travel_orchestrator.frontend.server:app --port 7860
 ```
 
 ### Testes
