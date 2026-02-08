@@ -20,9 +20,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Form, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Form, HTTPException, Request, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from travel_orchestrator.api.callbacks import OrchestratorCallbacks
@@ -74,6 +74,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Global exception handler
+# ---------------------------------------------------------------------------
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all handler so unhandled errors return structured JSON."""
+    logger.error("unhandled_error", path=str(request.url.path), error=str(exc))
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "An internal error occurred. Please try again later.",
+            "error_type": type(exc).__name__,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +200,7 @@ async def _run_plan(
         audio_file=audio_path,
         image_file=image_path,
         pdf_file=pdf_path,
+        callbacks=callbacks,
     )
 
     plan_data = json.loads(plan_json)
@@ -217,7 +236,7 @@ async def _run_plan(
     # Notify orchestrator WS about completion
     await callbacks.on_hitl_required(plan_id)
 
-    return {"plan": plan_data, "map_url": map_url, "pdf_url": pdf_url, **trip}
+    return {"plan": plan_data, "map_url": map_url, "pdf_url": pdf_url}
 
 
 # ---------------------------------------------------------------------------
@@ -320,20 +339,68 @@ async def ws_orchestrator(websocket: WebSocket) -> None:
 # WebSocket — Chat
 # ---------------------------------------------------------------------------
 
-_MOCK_RESPONSES = [
-    "I'd recommend visiting the Tsukiji Outer Market for an amazing food experience!",
-    "Based on your preferences, I've found some great cultural activities near your hotel.",
-    "The weather looks perfect for outdoor activities on days 2 and 3 of your trip.",
-    "I've optimized your itinerary to minimize travel time between locations.",
-    "Would you like me to find alternative hotel options in a different neighborhood?",
-]
+_MOCK_RESPONSES: dict[str, str] = {
+    "greeting": (
+        "Hello! I'm your AI travel planning assistant. I can help you plan trips, "
+        "find hotels, discover activities, and optimize your itinerary. "
+        "What would you like to do?"
+    ),
+    "hotels": (
+        "I found several excellent hotel options for you. "
+        "Each has been scored against your budget and preferences. "
+        "Check the results panel to see the full list."
+    ),
+    "activities": (
+        "Here are some amazing activities I discovered for your trip! "
+        "I've curated these based on your interests and the local weather forecast."
+    ),
+    "weather": (
+        "Here's the weather forecast for your travel dates. "
+        "I've analyzed the conditions to help you plan outdoor vs indoor activities accordingly."
+    ),
+    "budget": (
+        "Looking at your budget, the current plan looks good. "
+        "I've optimized spending across hotels and activities to stay within your limits."
+    ),
+    "default": (
+        "I'd be happy to help! Based on your preferences, I've put together some great options. "
+        "Take a look at the results and let me know if you'd like any changes."
+    ),
+}
+
+
+def _pick_chat_response(user_content: str) -> str:
+    """Pick a contextual mock response based on keywords in the user message."""
+    lower = user_content.lower()
+    if any(w in lower for w in ("hi", "hello", "hey", "oi", "olá")):
+        return _MOCK_RESPONSES["greeting"]
+    if any(w in lower for w in ("hotel", "hospedagem", "accommodation", "stay")):
+        return _MOCK_RESPONSES["hotels"]
+    if any(w in lower for w in ("activit", "atividad", "things to do", "attraction")):
+        return _MOCK_RESPONSES["activities"]
+    if any(w in lower for w in ("weather", "clima", "forecast", "tempo")):
+        return _MOCK_RESPONSES["weather"]
+    if any(w in lower for w in ("budget", "orçamento", "custo", "cost", "price")):
+        return _MOCK_RESPONSES["budget"]
+
+    # If there's trip data, enrich the response
+    if _trips:
+        latest = list(_trips.values())[-1]
+        dest = latest.get("destination", "")
+        if dest:
+            return (
+                f"Based on your {dest} trip plan, I can help you refine the itinerary. "
+                "Check the results panel for full details, or ask me about specific aspects "
+                "like hotels, activities, or weather."
+            )
+
+    return _MOCK_RESPONSES["default"]
 
 
 @app.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket) -> None:
-    """Chat streaming WebSocket. Receives user messages and streams mock AI responses."""
+    """Chat streaming WebSocket. Receives user messages and streams responses."""
     await manager.connect("chat", websocket)
-    response_idx = 0
 
     try:
         while True:
@@ -355,9 +422,8 @@ async def ws_chat(websocket: WebSocket) -> None:
 
             await asyncio.sleep(0.3)
 
-            # Pick a mock response
-            response_text = _MOCK_RESPONSES[response_idx % len(_MOCK_RESPONSES)]
-            response_idx += 1
+            # Pick a contextual response
+            response_text = _pick_chat_response(user_content)
 
             # Stream token by token
             for char in response_text:

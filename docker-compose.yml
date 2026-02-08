@@ -1,23 +1,37 @@
 version: '3.8'
 
 services:
+  # ----- FastAPI Backend -----
   api:
     build: .
     ports:
       - "8000:8000"
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+      # LLM — required for AI-powered planning (mock fallback without it)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Data providers — all optional, mock fallback without keys
+      - OPENWEATHERMAP_API_KEY=${OPENWEATHERMAP_API_KEY:-}
+      - RAPIDAPI_KEY=${RAPIDAPI_KEY:-}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-}
+      # Observability
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Infrastructure
       - REDIS_URL=redis://redis:6379/0
-      - LOG_LEVEL=INFO
       - ENVIRONMENT=production
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - app_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
+  # ----- React Frontend (Nginx) -----
   frontend:
     build:
       context: ./frontend
@@ -25,10 +39,12 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - VITE_API_BASE_URL=http://api:8000
+      - VITE_MAPBOX_TOKEN=${VITE_MAPBOX_TOKEN:-}
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
+  # ----- Redis Cache -----
   redis:
     image: redis:7-alpine
     ports:
@@ -41,6 +57,7 @@ services:
       timeout: 3s
       retries: 3
 
+  # ----- Prometheus Metrics -----
   prometheus:
     image: prom/prometheus:latest
     ports:
@@ -50,10 +67,27 @@ services:
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+
+  # ----- Grafana Dashboards -----
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
 
 volumes:
   app_data:
   redis_data:
   prometheus_data:
+  grafana_data:

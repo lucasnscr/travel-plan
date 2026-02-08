@@ -7,20 +7,37 @@ import type {
 } from "@/types/api";
 
 export async function planTrip(req: PlanRequest): Promise<PlanResponse> {
-  const fd = new FormData();
-  fd.append("destination", req.destination);
-  fd.append("start_date", req.start_date);
-  fd.append("end_date", req.end_date);
-  fd.append("budget", String(req.budget));
-  fd.append("currency", req.currency);
-  fd.append("group_size", String(req.group_size));
-  fd.append("interests", req.interests);
+  // Use FormData only when file uploads are present
+  const hasFiles = req.audio_file || req.image_file || req.pdf_file;
 
-  if (req.audio_file) fd.append("audio_file", req.audio_file);
-  if (req.image_file) fd.append("image_file", req.image_file);
-  if (req.pdf_file) fd.append("pdf_file", req.pdf_file);
+  if (hasFiles) {
+    const fd = new FormData();
+    fd.append("destination", req.destination);
+    fd.append("start_date", req.start_date);
+    fd.append("end_date", req.end_date);
+    fd.append("budget", String(req.budget));
+    fd.append("currency", req.currency);
+    fd.append("group_size", String(req.group_size));
+    fd.append("interests", req.interests);
+    if (req.audio_file) fd.append("audio_file", req.audio_file);
+    if (req.image_file) fd.append("image_file", req.image_file);
+    if (req.pdf_file) fd.append("pdf_file", req.pdf_file);
+    return postForm<PlanResponse>("/api/plan/form", fd);
+  }
 
-  return postForm<PlanResponse>("/api/plan/form", fd);
+  // JSON body for text-only requests
+  return post<PlanResponse>("/api/plan", {
+    destination: req.destination,
+    start_date: req.start_date,
+    end_date: req.end_date,
+    budget: Number(req.budget),
+    currency: req.currency,
+    num_travelers: Number(req.group_size),
+    preferences: req.interests
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  });
 }
 
 export async function approvePlan(

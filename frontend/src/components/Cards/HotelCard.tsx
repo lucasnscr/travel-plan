@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Star,
@@ -124,7 +124,7 @@ export function HotelCardSkeleton() {
   );
 }
 
-export function HotelCard({
+export const HotelCard = memo(function HotelCard({
   hotel,
   selected = false,
   loading = false,
@@ -337,4 +337,4 @@ export function HotelCard({
       </div>
     </motion.div>
   );
-}
+});

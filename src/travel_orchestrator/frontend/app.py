@@ -10,6 +10,7 @@ import html as html_lib
 import json
 import os
 import tempfile
+import time
 import uuid
 from typing import Any
 
@@ -130,8 +131,13 @@ async def plan_trip(
     image_file: str | None,
     pdf_file: str | None,
     progress: Any = None,
+    callbacks: Any = None,
 ) -> tuple[str, str, str | None]:
     """Main planning pipeline.
+
+    Args:
+        callbacks: Optional ``OrchestratorCallbacks`` instance for emitting
+            real-time WebSocket events during graph execution.
 
     Returns:
         (plan_json, map_html, pdf_path)
@@ -200,7 +206,10 @@ async def plan_trip(
         graph = compile_graph()
         thread_id = uuid.uuid4().hex
         config = {"configurable": {"thread_id": thread_id}}
-        result_state = await graph.ainvoke(state, config=config)
+
+        result_state = await _run_graph_with_callbacks(
+            graph, state, config, callbacks, progress,
+        )
         logger.info("graph_completed", plan_id=result_state.get("plan_id"))
     except Exception as exc:
         logger.warning("graph_execution_failed", error=str(exc))
@@ -255,6 +264,83 @@ async def plan_trip(
     if callable(progress):
         progress(1.0, desc="Done!")
     return plan_json, map_html, pdf_path
+
+
+# ---------------------------------------------------------------------------
+# Graph execution with streaming callbacks
+# ---------------------------------------------------------------------------
+
+# Keys that each node typically modifies — used for state_update events.
+_NODE_CHANGED_KEYS: dict[str, list[str]] = {
+    "gather_requirements": ["destination", "dates", "budget", "traveler_profile"],
+    "analyze_destination": ["destination_analysis", "risk_flags"],
+    "search_flights": [],
+    "search_hotels": ["hotel_options", "selected_hotel_id", "current_cost"],
+    "search_activities": ["activity_options", "selected_activity_ids", "current_cost"],
+    "optimize_itinerary": ["optimized_itinerary"],
+    "calculate_budget": ["current_cost"],
+    "risk_and_policy_check": ["risk_flags"],
+    "present_for_approval": ["approval_status"],
+    "process_feedback": ["revision_count"],
+    "book_services": [],
+    "generate_documents": [],
+}
+
+
+async def _run_graph_with_callbacks(
+    graph: Any,
+    state: dict[str, Any],
+    config: dict[str, Any],
+    callbacks: Any,
+    progress: Any = None,
+) -> dict[str, Any]:
+    """Execute the graph using ``astream`` and emit WS events per node.
+
+    Falls back to ``ainvoke`` if ``astream`` is unavailable.
+    """
+    if callbacks is None:
+        # No callbacks — use simple ainvoke
+        return await graph.ainvoke(state, config=config)
+
+    result_state = dict(state)
+    node_count = 0
+    total_nodes = 12  # approximate for progress bar
+
+    try:
+        async for chunk in graph.astream(state, config=config, stream_mode="updates"):
+            for node_name, node_output in chunk.items():
+                t0 = time.time()
+                await callbacks.on_node_start(node_name)
+
+                # Merge output into accumulated state
+                if isinstance(node_output, dict):
+                    result_state.update(node_output)
+
+                duration_ms = (time.time() - t0) * 1000
+                await callbacks.on_node_end(node_name, duration_ms=duration_ms)
+
+                # Emit state snapshot
+                changed = _NODE_CHANGED_KEYS.get(node_name, [])
+                if changed:
+                    await callbacks.on_state_update(
+                        node_name, result_state, changed,
+                    )
+
+                node_count += 1
+                if callable(progress):
+                    frac = 0.5 + 0.3 * (node_count / total_nodes)
+                    progress(min(frac, 0.8), desc=f"Running {node_name}...")
+    except Exception as exc:
+        # GraphInterrupt or other errors — use state accumulated so far
+        exc_name = type(exc).__name__
+        if exc_name != "GraphInterrupt":
+            logger.warning("graph_stream_error", error=str(exc))
+            result_state["risk_flags"] = [
+                *result_state.get("risk_flags", []),
+                f"graph_error: {exc}",
+            ]
+
+    return result_state
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ Second node in the travel-planning workflow.  Responsible for:
 from __future__ import annotations
 
 import datetime
+import time
 from collections import Counter
 from typing import Any
 
@@ -54,10 +55,25 @@ async def analyze_destination_node(
     start_date = dates["start_date"]
     end_date = dates["end_date"]
 
+    # Lazy import to avoid circular deps; functions are no-ops if no WS clients
+    from travel_orchestrator.api.ws_orchestrator import emit_tool_call, emit_agent_log
+
     # -- 1. Fetch weather forecast (non-blocking) ----------------------------
     forecast: list[dict[str, Any]] = []
     try:
+        await emit_agent_log(
+            node="analyze_destination", log_type="tool_call",
+            message="Calling get_weather_forecast on weather-mcp",
+        )
+        t0 = time.time()
         forecast = await get_weather_forecast(destination, start_date, end_date)
+        elapsed = (time.time() - t0) * 1000
+        await emit_tool_call(
+            node="analyze_destination", tool="get_weather_forecast",
+            server="weather-mcp",
+            params={"destination": destination, "start_date": start_date, "end_date": end_date},
+            result={"days": len(forecast)}, duration_ms=elapsed,
+        )
         logger.info(
             "weather_forecast_fetched",
             destination=destination,
@@ -69,7 +85,19 @@ async def analyze_destination_node(
     # -- 2. Fetch weather alerts (non-blocking) ------------------------------
     alerts: list[dict[str, str]] = []
     try:
+        await emit_agent_log(
+            node="analyze_destination", log_type="tool_call",
+            message="Calling get_weather_alerts on weather-mcp",
+        )
+        t0 = time.time()
         alerts = await get_weather_alerts(destination)
+        elapsed = (time.time() - t0) * 1000
+        await emit_tool_call(
+            node="analyze_destination", tool="get_weather_alerts",
+            server="weather-mcp",
+            params={"destination": destination},
+            result={"count": len(alerts)}, duration_ms=elapsed,
+        )
         logger.info(
             "weather_alerts_fetched",
             destination=destination,
@@ -81,7 +109,19 @@ async def analyze_destination_node(
     # -- 3. Gather seasonal events (non-blocking) ---------------------------
     seasonal_events: list[dict[str, Any]] = []
     try:
+        await emit_agent_log(
+            node="analyze_destination", log_type="tool_call",
+            message="Calling get_seasonal_events on activities-mcp",
+        )
+        t0 = time.time()
         seasonal_events = get_seasonal_events(destination, start_date, end_date)
+        elapsed = (time.time() - t0) * 1000
+        await emit_tool_call(
+            node="analyze_destination", tool="get_seasonal_events",
+            server="activities-mcp",
+            params={"destination": destination, "start_date": start_date, "end_date": end_date},
+            result={"count": len(seasonal_events)}, duration_ms=elapsed,
+        )
         logger.info(
             "seasonal_events_gathered",
             destination=destination,

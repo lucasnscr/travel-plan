@@ -14,6 +14,7 @@ Searches for hotel accommodations at the destination.  Responsible for:
 from __future__ import annotations
 
 import datetime
+import time
 from typing import Any
 
 from travel_orchestrator.mcp_servers.hotels.client import search_hotels
@@ -90,8 +91,19 @@ async def search_hotels_node(
     location_centrality = _PACE_CENTRALITY.get(pace, 0.5)
 
     # -- 3. Call hotel search (non-blocking) -------------------------------
+    from travel_orchestrator.api.ws_orchestrator import emit_tool_call, emit_agent_log
+
     raw_options: list[dict[str, Any]] = []
     try:
+        search_params = {
+            "destination": destination, "check_in": start_date,
+            "check_out": end_date, "guests": group_size,
+        }
+        await emit_agent_log(
+            node="search_hotels", log_type="tool_call",
+            message="Calling search_hotels on hotels-mcp",
+        )
+        t0 = time.time()
         raw_options = await search_hotels(
             destination=destination,
             check_in=start_date,
@@ -99,6 +111,12 @@ async def search_hotels_node(
             guests=group_size,
             location_centrality=location_centrality,
             min_stars=min_stars,
+        )
+        elapsed = (time.time() - t0) * 1000
+        await emit_tool_call(
+            node="search_hotels", tool="search_hotels",
+            server="hotels-mcp", params=search_params,
+            result={"count": len(raw_options)}, duration_ms=elapsed,
         )
         logger.info(
             "hotel_search_completed",

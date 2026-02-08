@@ -77,6 +77,11 @@ export class OrchestratorSocket {
   private connected = false;
   private fallbackMode = false;
 
+  /** Whether the WebSocket is connected to the backend */
+  get isConnected(): boolean {
+    return this.connected && !this.fallbackMode;
+  }
+
   /** Connect to the backend WebSocket endpoint */
   connect(url?: string) {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";

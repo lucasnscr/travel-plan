@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { motion } from "framer-motion";
 import {
   Clock,
@@ -143,7 +144,7 @@ export function ActivityCardSkeleton() {
   );
 }
 
-export function ActivityCard({
+export const ActivityCard = memo(function ActivityCard({
   activity,
   selected = false,
   loading = false,
@@ -318,4 +319,4 @@ export function ActivityCard({
       </div>
     </motion.div>
   );
-}
+});

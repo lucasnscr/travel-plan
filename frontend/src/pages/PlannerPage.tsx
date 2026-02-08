@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { PlannerForm } from "@/components/Chat/PlannerForm";
 import { PipelineProgress } from "@/components/Orchestrator/PipelineProgress";
@@ -7,14 +7,15 @@ import { useOrchestrator } from "@/hooks/use-orchestrator";
 import { OrchestratorSocket } from "@/services/websocket";
 import { Spinner } from "@/components/ui/Spinner";
 
-const socket = new OrchestratorSocket();
-
 export function PlannerPage() {
   const { isPlanning, response, error } = usePlan();
   const { resetPipeline } = useOrchestrator();
   const navigate = useNavigate();
+  const socketRef = useRef<OrchestratorSocket | null>(null);
 
   useEffect(() => {
+    const socket = new OrchestratorSocket();
+    socketRef.current = socket;
     socket.connect();
     return () => socket.disconnect();
   }, []);
@@ -22,7 +23,12 @@ export function PlannerPage() {
   useEffect(() => {
     if (isPlanning) {
       resetPipeline();
-      socket.simulateProgress();
+      // Real WS events flow from the backend during graph execution.
+      // Fall back to simulation only when WS is not connected.
+      const socket = socketRef.current;
+      if (socket && !socket.isConnected) {
+        socket.simulateProgress();
+      }
     }
   }, [isPlanning, resetPipeline]);
 

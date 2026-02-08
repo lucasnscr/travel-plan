@@ -83,7 +83,7 @@ export function PlannerForm() {
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Input
             label="Budget"
             type="number"
@@ -115,7 +115,7 @@ export function PlannerForm() {
 
         <InterestTags selected={interests} onToggle={toggleInterest} />
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <FileUploadZone
             label="Audio"
             accept="audio/*"

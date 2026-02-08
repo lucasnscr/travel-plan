@@ -43,6 +43,7 @@ export function ChatInput() {
 
   const isStreaming = useChatStore((s) => s.isStreaming);
   const sendMessage = useChatStore((s) => s.sendMessage);
+  const wsConnected = useChatStore((s) => s.wsConnected);
   const hasPlan = usePlanStore((s) => s.response !== null);
 
   const hasSpeech = typeof window !== "undefined" && getSpeechRecognition() !== null;
@@ -189,9 +190,11 @@ export function ChatInput() {
         </button>
       </div>
 
-      <p className="mt-1.5 text-center text-[10px] text-slate-700">
-        AI responses are simulated for demo purposes
-      </p>
+      {!wsConnected && (
+        <p className="mt-1.5 text-center text-[10px] text-slate-700">
+          AI responses are simulated for demo purposes
+        </p>
+      )}
     </div>
   );
 }

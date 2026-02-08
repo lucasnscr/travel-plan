@@ -104,6 +104,87 @@ function buildAttachments(types: AttachmentType[]): ChatAttachment[] {
 }
 
 /* ------------------------------------------------------------------ */
+/*  WebSocket connection                                               */
+/* ------------------------------------------------------------------ */
+
+let chatWs: WebSocket | null = null;
+let chatWsConnected = false;
+
+function getChatWsUrl(): string {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/ws/chat`;
+}
+
+function ensureChatWs(store: ChatState): boolean {
+  if (chatWs && chatWs.readyState === WebSocket.OPEN) return true;
+
+  try {
+    chatWs = new WebSocket(getChatWsUrl());
+
+    chatWs.onopen = () => {
+      chatWsConnected = true;
+    };
+
+    chatWs.onmessage = (e: MessageEvent) => {
+      try {
+        const msg = JSON.parse(e.data as string) as {
+          type: string;
+          content?: string;
+          message?: string | Record<string, unknown>;
+        };
+
+        switch (msg.type) {
+          case "status":
+            store.setStatusMessage(msg.message as string);
+            break;
+          case "token":
+            if (msg.content) {
+              const s = useChatStore.getState();
+              const last = s.messages[s.messages.length - 1];
+              if (last?.role === "assistant") {
+                store.updateLastAssistant(last.content + msg.content);
+              }
+            }
+            break;
+          case "done": {
+            const attachmentTypes = detectAttachmentTypes(
+              useChatStore.getState().messages.find((m) => m.role === "user" && m === useChatStore.getState().messages.slice().reverse().find((m2) => m2.role === "user"))?.content ?? "",
+            );
+            const attachments = buildAttachments(attachmentTypes);
+            store.finalizeStream(attachments);
+            break;
+          }
+        }
+      } catch {
+        // ignore malformed messages
+      }
+    };
+
+    chatWs.onclose = () => {
+      chatWsConnected = false;
+      chatWs = null;
+    };
+
+    chatWs.onerror = () => {
+      chatWsConnected = false;
+      chatWs?.close();
+      chatWs = null;
+    };
+  } catch {
+    chatWsConnected = false;
+    return false;
+  }
+
+  // WS just created — not yet open
+  return false;
+}
+
+function detectAttachmentTypes(userMsg: string): AttachmentType[] {
+  const { attachmentTypes } = pickResponse(userMsg);
+  return attachmentTypes;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Store                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -111,6 +192,7 @@ interface ChatState {
   messages: ChatMessage[];
   isStreaming: boolean;
   statusMessage: string | null;
+  wsConnected: boolean;
 
   addMessage: (msg: ChatMessage) => void;
   updateLastAssistant: (content: string) => void;
@@ -118,6 +200,8 @@ interface ChatState {
   setStatusMessage: (msg: string | null) => void;
   clearMessages: () => void;
   sendMessage: (content: string) => void;
+  connectWs: () => void;
+  disconnectWs: () => void;
 }
 
 let streamTimer: ReturnType<typeof setInterval> | null = null;
@@ -132,6 +216,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
   statusMessage: null,
+  wsConnected: false,
 
   addMessage: (msg) =>
     set((s) => ({ messages: [...s.messages, msg] })),
@@ -167,6 +252,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ messages: [], isStreaming: false, statusMessage: null });
   },
 
+  connectWs: () => {
+    const connected = ensureChatWs(get());
+    set({ wsConnected: connected });
+  },
+
+  disconnectWs: () => {
+    chatWs?.close();
+    chatWs = null;
+    chatWsConnected = false;
+    set({ wsConnected: false });
+  },
+
   sendMessage: (content: string) => {
     const trimmed = content.trim();
     if (!trimmed || get().isStreaming) return;
@@ -181,10 +278,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       timestamp: Date.now(),
     };
 
-    // 2. Prepare response
-    const { text: fullResponse, attachmentTypes } = pickResponse(trimmed);
-
-    // 3. Add empty assistant message
+    // 2. Add empty assistant message
     const assistantMsg: ChatMessage = {
       id: `assistant-${Date.now()}`,
       role: "assistant",
@@ -199,7 +293,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       statusMessage: STATUS_STAGES[0] ?? null,
     }));
 
-    // 4. Cycle status messages
+    // 3. Try WebSocket first
+    if (chatWsConnected && chatWs?.readyState === WebSocket.OPEN) {
+      chatWs.send(JSON.stringify({ content: trimmed }));
+      set({ wsConnected: true });
+      return;
+    }
+
+    // 4. Fall back to mock streaming
+    set({ wsConnected: false });
+    const { text: fullResponse, attachmentTypes } = pickResponse(trimmed);
+
+    // Cycle status messages
     let statusIdx = 0;
     statusTimer = setInterval(() => {
       statusIdx++;
@@ -208,7 +313,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }, 1500);
 
-    // 5. Stream tokens
+    // Stream tokens
     let charIdx = 0;
     streamTimer = setInterval(() => {
       charIdx += 2 + Math.floor(Math.random() * 3);
@@ -224,3 +329,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }, 25);
   },
 }));
+
+// Try to connect on module load
+try {
+  ensureChatWs(useChatStore.getState());
+} catch {
+  // Ignore — connection will be retried on first message
+}

@@ -24,11 +24,13 @@ import type { EnrichedSlot } from "./timeline-types";
 interface ItineraryTimelineProps {
   itinerary: OptimizedItinerary;
   activities: Activity[];
+  planId?: string;
 }
 
 export function ItineraryTimeline({
   itinerary,
   activities,
+  planId,
 }: ItineraryTimelineProps) {
   const {
     days,
@@ -48,8 +50,8 @@ export function ItineraryTimeline({
 
   // Load itinerary into timeline store
   useEffect(() => {
-    loadItinerary(itinerary.days, activities);
-  }, [itinerary, activities, loadItinerary]);
+    loadItinerary(itinerary.days, activities, planId);
+  }, [itinerary, activities, planId, loadItinerary]);
 
   // --- Scroll sync via IntersectionObserver ---
   const headerRefs = useRef<Map<number, HTMLDivElement>>(new Map());

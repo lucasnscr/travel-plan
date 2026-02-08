@@ -17,6 +17,7 @@ import { GlassPanel } from "@/components/ui/GlassPanel";
 import { Button } from "@/components/ui/Button";
 import { Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import type { Activity } from "@/types/core";
 
 const tabAnimation = {
@@ -91,75 +92,86 @@ export function ResultsPage() {
       <AnimatePresence mode="wait">
         {activeTab === "plan" && (
           <motion.div key="plan" {...tabAnimation} className="space-y-6">
-            <PlanSummaryCard />
+            <ErrorBoundary section="Plan Summary">
+              <PlanSummaryCard />
+            </ErrorBoundary>
 
             {plan.optimized_itinerary && (
-              <ItineraryTimeline
-                itinerary={plan.optimized_itinerary}
-                activities={plan.activity_options}
-              />
+              <ErrorBoundary section="Timeline">
+                <ItineraryTimeline
+                  itinerary={plan.optimized_itinerary}
+                  activities={plan.activity_options}
+                  planId={plan.plan_id}
+                />
+              </ErrorBoundary>
             )}
 
             {/* Hotels */}
             {plan.hotel_options.length > 0 && (
-              <section className="space-y-3">
-                <h3 className="font-heading text-lg font-semibold text-slate-100">
-                  Hotels
-                </h3>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {plan.hotel_options.map((hotel, i) => {
-                    const badges = hotelBadges[hotel.id];
-                    return (
-                      <HotelCard
-                        key={hotel.id}
-                        hotel={hotel}
-                        selected={hotel.id === plan.selected_hotel_id}
-                        onSelect={selectHotel}
-                        bestValue={badges?.bestValue}
-                        topRated={badges?.topRated}
-                        index={i}
-                      />
-                    );
-                  })}
-                </div>
-              </section>
+              <ErrorBoundary section="Hotels">
+                <section className="space-y-3">
+                  <h3 className="font-heading text-lg font-semibold text-slate-100">
+                    Hotels
+                  </h3>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {plan.hotel_options.map((hotel, i) => {
+                      const badges = hotelBadges[hotel.id];
+                      return (
+                        <HotelCard
+                          key={hotel.id}
+                          hotel={hotel}
+                          selected={hotel.id === plan.selected_hotel_id}
+                          onSelect={selectHotel}
+                          bestValue={badges?.bestValue}
+                          topRated={badges?.topRated}
+                          index={i}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              </ErrorBoundary>
             )}
 
             {/* Activities */}
             {plan.activity_options.length > 0 && (
-              <section className="space-y-3">
-                <h3 className="font-heading text-lg font-semibold text-slate-100">
-                  Activities
-                </h3>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {plan.activity_options.map((activity, i) => (
-                    <ActivityCard
-                      key={activity.id}
-                      activity={activity}
-                      selected={plan.selected_activity_ids.includes(
-                        activity.id,
-                      )}
-                      onToggle={toggleActivity}
-                      onViewDetails={setDetailActivity}
-                      index={i}
-                    />
-                  ))}
-                </div>
-              </section>
+              <ErrorBoundary section="Activities">
+                <section className="space-y-3">
+                  <h3 className="font-heading text-lg font-semibold text-slate-100">
+                    Activities
+                  </h3>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {plan.activity_options.map((activity, i) => (
+                      <ActivityCard
+                        key={activity.id}
+                        activity={activity}
+                        selected={plan.selected_activity_ids.includes(
+                          activity.id,
+                        )}
+                        onToggle={toggleActivity}
+                        onViewDetails={setDetailActivity}
+                        index={i}
+                      />
+                    ))}
+                  </div>
+                </section>
+              </ErrorBoundary>
             )}
 
             {/* Weather Forecast */}
             {plan.destination_analysis?.forecast && (
-              <section className="space-y-3">
-                <h3 className="font-heading text-lg font-semibold text-slate-100">
-                  Weather Forecast
-                </h3>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {plan.destination_analysis.forecast.map((f, i) => (
-                    <WeatherCard key={f.date} forecast={f} index={i} />
-                  ))}
-                </div>
-              </section>
+              <ErrorBoundary section="Weather">
+                <section className="space-y-3">
+                  <h3 className="font-heading text-lg font-semibold text-slate-100">
+                    Weather Forecast
+                  </h3>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {plan.destination_analysis.forecast.map((f, i) => (
+                      <WeatherCard key={f.date} forecast={f} index={i} />
+                    ))}
+                  </div>
+                </section>
+              </ErrorBoundary>
             )}
 
             {/* PDF Download */}
@@ -190,13 +202,17 @@ export function ResultsPage() {
 
         {activeTab === "map" && (
           <motion.div key="map" {...tabAnimation}>
-            <TravelMap />
+            <ErrorBoundary section="Map">
+              <TravelMap />
+            </ErrorBoundary>
           </motion.div>
         )}
 
         {activeTab === "orchestrator" && (
           <motion.div key="orchestrator" {...tabAnimation}>
-            <OrchestratorPage />
+            <ErrorBoundary section="Orchestrator">
+              <OrchestratorPage />
+            </ErrorBoundary>
           </motion.div>
         )}
       </AnimatePresence>

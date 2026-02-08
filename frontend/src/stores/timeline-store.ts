@@ -1,6 +1,27 @@
 import { create } from "zustand";
 import type { ItineraryDay, ItinerarySlot, Activity } from "@/types/core";
 import type { EnrichedSlot, DayTotals } from "@/components/Timeline/timeline-types";
+import { updateItinerary } from "@/services/rest";
+
+// Debounced persist to backend
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+const PERSIST_DEBOUNCE_MS = 500;
+
+function schedulePersist(planId: string, days: ItineraryDay[]) {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    // Convert ItineraryDay[] to the API format (simplified DayPlan[])
+    const apiDays = days.map((d) => ({
+      date: d.date,
+      day_number: d.day_number,
+      theme: d.theme || "",
+      activities: [],
+    }));
+    updateItinerary(planId, apiDays).catch(() => {
+      // Silently ignore — local state is still valid
+    });
+  }, PERSIST_DEBOUNCE_MS);
+}
 
 interface TimelineState {
   /** Working copy of itinerary days (supports reordering) */
@@ -11,9 +32,11 @@ interface TimelineState {
   activityMap: Map<string, Activity>;
   /** Currently dragging slot ID */
   draggingId: string | null;
+  /** Plan ID for persistence */
+  planId: string | null;
 
   /** Load itinerary data from plan */
-  loadItinerary: (days: ItineraryDay[], activities: Activity[]) => void;
+  loadItinerary: (days: ItineraryDay[], activities: Activity[], planId?: string) => void;
   /** Toggle day collapse */
   toggleDay: (dayNumber: number) => void;
   /** Set dragging state */
@@ -34,13 +57,15 @@ export const useTimelineStore = create<TimelineState>((set) => ({
   collapsedDays: new Set(),
   activityMap: new Map(),
   draggingId: null,
+  planId: null,
 
-  loadItinerary: (days, activities) =>
+  loadItinerary: (days, activities, planId) =>
     set({
       days: days.map((d) => ({ ...d, slots: [...d.slots] })),
       activityMap: new Map(activities.map((a) => [a.id, a])),
       collapsedDays: new Set(),
       draggingId: null,
+      planId: planId ?? null,
     }),
 
   toggleDay: (dayNumber) =>
@@ -65,6 +90,7 @@ export const useTimelineStore = create<TimelineState>((set) => ({
         if (moved) slots.splice(toIndex, 0, moved);
         return { ...d, slots };
       });
+      if (s.planId) schedulePersist(s.planId, days);
       return { days };
     }),
 
@@ -77,6 +103,7 @@ export const useTimelineStore = create<TimelineState>((set) => ({
 
       const [moved] = srcDay.slots.splice(fromIndex, 1);
       if (moved) dstDay.slots.splice(toIndex, 0, moved);
+      if (s.planId) schedulePersist(s.planId, days);
       return { days };
     }),
 }));

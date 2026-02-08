@@ -14,6 +14,7 @@ Searches for activities and attractions at the destination.  Responsible for:
 from __future__ import annotations
 
 import datetime
+import time
 from typing import Any
 
 from travel_orchestrator.mcp_servers.activities.client import discover_activities
@@ -74,14 +75,31 @@ async def search_activities_node(
         interests = ["culture", "food"]
 
     # -- 3. Call activity search (non-blocking) ----------------------------
+    from travel_orchestrator.api.ws_orchestrator import emit_tool_call, emit_agent_log
+
     raw_activities: list[dict[str, Any]] = []
     try:
+        search_params = {
+            "destination": destination, "interests": interests,
+            "start_date": start_date, "end_date": end_date,
+        }
+        await emit_agent_log(
+            node="search_activities", log_type="tool_call",
+            message="Calling discover_activities on activities-mcp",
+        )
+        t0 = time.time()
         raw_activities = await discover_activities(
             destination=destination,
             interests=interests,
             start_date=start_date,
             end_date=end_date,
             budget_per_day=budget_per_day,
+        )
+        elapsed = (time.time() - t0) * 1000
+        await emit_tool_call(
+            node="search_activities", tool="discover_activities",
+            server="activities-mcp", params=search_params,
+            result={"count": len(raw_activities)}, duration_ms=elapsed,
         )
         logger.info(
             "activity_search_completed",
