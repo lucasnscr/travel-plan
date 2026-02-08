@@ -73,6 +73,50 @@ Sistema de planejamento de viagens com agentes AI que demonstra padroes de produ
 | [Deployment](deployment.md) | Docker, docker-compose, Prometheus |
 | [Referencia da API](api-reference.md) | Funcoes publicas de cada modulo |
 
+## Demo Mode
+
+O sistema inclui um modo de demonstracao otimizado para apresentacoes ao vivo, com dados pre-carregados de uma viagem de 5 dias a Tokyo.
+
+### Ativacao
+
+Pressione a tecla **D** em qualquer pagina para ativar/desativar o Demo Mode. Um painel de controle aparecera no canto inferior direito.
+
+### Controles
+
+| Tecla | Acao |
+|-------|------|
+| `D` | Ativar/desativar Demo Mode |
+| `Space` | Play/Stop auto-play |
+| `H` | Ativar/desativar tooltips explicativos |
+| `1`-`5` | Navegar para o dia correspondente no mapa |
+| `O` | Abrir aba do Orchestrator |
+| `F` | Fullscreen no mapa |
+| `R` | Resetar demonstracao |
+| `Escape` | Sair do Demo Mode |
+
+### Velocidades
+
+- **Fast**: Execucao quase instantanea (0.05x) — ideal para debug
+- **Normal**: Velocidade padrao (1x) — ~30 segundos total
+- **Slow**: Pausas dramaticas (2.5x) — ideal para apresentacoes ao vivo
+
+### Auto-Play
+
+O botao "Play Demo" executa uma sequencia automatizada que demonstra todo o fluxo:
+
+1. Reset do ambiente e exibicao do formulario de planejamento
+2. Disparo do pipeline LangGraph com dados pre-carregados (Tokyo 5 dias)
+3. Visualizacao do orchestrator com simulacao dos 12 nodes
+4. Destaque dos MCP Servers buscando dados de clima, hoteis e atividades
+5. Pausa dramatica no gate Human-in-the-Loop
+6. Exibicao dos resultados: hoteis ranqueados, atividades curadas, itinerario
+7. Fly-through no mapa interativo pelos 5 dias da viagem
+8. Timeline drag-and-drop com persistencia via REST API
+
+### Highlight Mode
+
+Pressione **H** durante o Demo Mode para exibir tooltips explicativos sobre cada componente da interface, destacando as tecnologias utilizadas (LangGraph, MCP, Human-in-the-Loop, WebSocket streaming, etc.).
+
 ## Quick Start
 
 ```bash

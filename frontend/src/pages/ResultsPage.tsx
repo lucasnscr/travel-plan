@@ -98,18 +98,20 @@ export function ResultsPage() {
 
             {plan.optimized_itinerary && (
               <ErrorBoundary section="Timeline">
-                <ItineraryTimeline
-                  itinerary={plan.optimized_itinerary}
-                  activities={plan.activity_options}
-                  planId={plan.plan_id}
-                />
+                <div data-demo-highlight="timeline">
+                  <ItineraryTimeline
+                    itinerary={plan.optimized_itinerary}
+                    activities={plan.activity_options}
+                    planId={plan.plan_id}
+                  />
+                </div>
               </ErrorBoundary>
             )}
 
             {/* Hotels */}
             {plan.hotel_options.length > 0 && (
               <ErrorBoundary section="Hotels">
-                <section className="space-y-3">
+                <section className="space-y-3" data-demo-highlight="hotels">
                   <h3 className="font-heading text-lg font-semibold text-slate-100">
                     Hotels
                   </h3>
@@ -136,7 +138,7 @@ export function ResultsPage() {
             {/* Activities */}
             {plan.activity_options.length > 0 && (
               <ErrorBoundary section="Activities">
-                <section className="space-y-3">
+                <section className="space-y-3" data-demo-highlight="activities">
                   <h3 className="font-heading text-lg font-semibold text-slate-100">
                     Activities
                   </h3>
@@ -196,14 +198,18 @@ export function ResultsPage() {
             )}
 
             {/* Approval */}
-            <ApprovalPanel />
+            <div data-demo-highlight="approval">
+              <ApprovalPanel />
+            </div>
           </motion.div>
         )}
 
         {activeTab === "map" && (
           <motion.div key="map" {...tabAnimation}>
             <ErrorBoundary section="Map">
-              <TravelMap />
+              <div data-demo-highlight="map">
+                <TravelMap />
+              </div>
             </ErrorBoundary>
           </motion.div>
         )}
@@ -211,7 +217,9 @@ export function ResultsPage() {
         {activeTab === "orchestrator" && (
           <motion.div key="orchestrator" {...tabAnimation}>
             <ErrorBoundary section="Orchestrator">
-              <OrchestratorPage />
+              <div data-demo-highlight="orchestrator">
+                <OrchestratorPage />
+              </div>
             </ErrorBoundary>
           </motion.div>
         )}
